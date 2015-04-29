@@ -140,8 +140,8 @@ var Apiman;
     }]);
     hawtioPluginLoader.registerPreBootstrapTask(function (next) {
         // Load the configuration jsonp script
-        $.getScript('js/configuration.nocache.js').done(function (script, textStatus) {
-            Apiman.log.info("Loaded the configuration.nocache.js config!");
+        $.getScript('apiman/config.js').done(function (script, textStatus) {
+            Apiman.log.info("Loaded the config.js config!");
         }).fail(function (response) {
             Apiman.log.debug("Error fetching configuration: ", response);
         }).always(function () {
