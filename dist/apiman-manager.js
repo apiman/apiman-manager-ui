@@ -138,6 +138,23 @@ var Apiman;
         $rootScope.pluginName = Apiman.pluginName;
         Apiman.log.debug("loaded");
     }]);
+    hawtioPluginLoader.registerPreBootstrapTask(function (next) {
+        // Load the configuration jsonp script
+        $.getScript('js/configuration.nocache.js').done(function (script, textStatus) {
+            Apiman.log.info("Loaded the configuration.nocache.js config!");
+        }).fail(function (response) {
+            Apiman.log.debug("Error fetching configuration: ", response);
+        }).always(function () {
+            // Load the i18n jsonp script
+            $.getScript('js/translations.nocache.js').done(function (script, textStatus) {
+                Apiman.log.info("Loaded the translations.nocache.js bundle!");
+            }).fail(function (response) {
+                Apiman.log.debug("Error fetching translations: ", response);
+            }).always(function () {
+                next();
+            });
+        });
+    }, true);
     hawtioPluginLoader.addModule(Apiman.pluginName);
 })(Apiman || (Apiman = {}));
 
@@ -881,7 +898,11 @@ var ApimanPageLifecycle;
         return msg;
     };
     ApimanPageLifecycle._module = angular.module("ApimanPageLifecycle", []);
-    ApimanPageLifecycle.PageLifecycle = ApimanPageLifecycle._module.factory('PageLifecycle', ['$q', 'Logger', '$rootScope', '$location', 'CurrentUserSvcs', function ($q, Logger, $rootScope, $location, CurrentUserSvcs) {
+    ApimanPageLifecycle.PageLifecycle = ApimanPageLifecycle._module.factory('PageLifecycle', ['$q', 'Logger', '$rootScope', '$location', 'CurrentUserSvcs', 'Configuration', function ($q, Logger, $rootScope, $location, CurrentUserSvcs, Configuration) {
+        $rootScope.showHeader = true;
+        if (Configuration['ui'] && Configuration.ui.header == false) {
+            $rootScope.showHeader = false;
+        }
         var processCurrentUser = function (currentUser) {
             $rootScope.currentUser = currentUser;
             var permissions = {};
@@ -2973,6 +2994,789 @@ var Apiman;
 /// <reference path="../services.ts"/>
 var Apiman;
 (function (Apiman) {
+    Apiman.PlanActivityController = Apiman._module.controller("Apiman.PlanActivityController", ['$q', '$scope', '$location', 'OrgSvcs', 'AuditSvcs', 'Logger', 'PageLifecycle', 'PlanEntityLoader', '$routeParams', function ($q, $scope, $location, OrgSvcs, AuditSvcs, Logger, PageLifecycle, PlanEntityLoader, $routeParams) {
+        var params = $routeParams;
+        $scope.organizationId = params.org;
+        $scope.tab = 'activity';
+        $scope.version = params.version;
+        var getNextPage = function (successHandler, errorHandler) {
+            $scope.currentPage = $scope.currentPage + 1;
+            AuditSvcs.get({ organizationId: params.org, entityType: 'plans', entityId: params.plan, page: $scope.currentPage, count: 20 }, function (results) {
+                var entries = results.beans;
+                successHandler(entries);
+            }, errorHandler);
+        };
+        var pageData = PlanEntityLoader.getCommonData($scope, $location);
+        pageData = angular.extend(pageData, {
+            auditEntries: $q(function (resolve, reject) {
+                $scope.currentPage = 0;
+                getNextPage(resolve, reject);
+            })
+        });
+        $scope.getNextPage = getNextPage;
+        PageLifecycle.loadPage('PlanActivity', pageData, $scope, function () {
+            PageLifecycle.setPageTitle('plan-activity', [$scope.plan.name]);
+        });
+    }]);
+})(Apiman || (Apiman = {}));
+
+/// <reference path="../apimanPlugin.ts"/>
+/// <reference path="../services.ts"/>
+var Apiman;
+(function (Apiman) {
+    Apiman.PlanOverviewController = Apiman._module.controller("Apiman.PlanOverviewController", ['$q', '$scope', '$location', 'PageLifecycle', 'PlanEntityLoader', '$routeParams', function ($q, $scope, $location, PageLifecycle, PlanEntityLoader, $routeParams) {
+        var params = $routeParams;
+        $scope.organizationId = params.org;
+        $scope.tab = 'overview';
+        var pageData = PlanEntityLoader.getCommonData($scope, $location);
+        PageLifecycle.loadPage('PlanOverview', pageData, $scope, function () {
+            PageLifecycle.setPageTitle('plan-overview', [$scope.plan.name]);
+        });
+    }]);
+})(Apiman || (Apiman = {}));
+
+/// <reference path="../apimanPlugin.ts"/>
+/// <reference path="../services.ts"/>
+var Apiman;
+(function (Apiman) {
+    Apiman.PlanPoliciesController = Apiman._module.controller("Apiman.PlanPoliciesController", ['$q', '$scope', '$location', 'OrgSvcs', 'ApimanSvcs', 'Logger', 'PageLifecycle', 'PlanEntityLoader', 'Dialogs', '$routeParams', function ($q, $scope, $location, OrgSvcs, ApimanSvcs, Logger, PageLifecycle, PlanEntityLoader, Dialogs, $routeParams) {
+        var params = $routeParams;
+        $scope.organizationId = params.org;
+        $scope.tab = 'policies';
+        $scope.version = params.version;
+        var removePolicy = function (policy) {
+            angular.forEach($scope.policies, function (p, index) {
+                if (policy === p) {
+                    $scope.policies.splice(index, 1);
+                }
+            });
+        };
+        $scope.removePolicy = function (policy) {
+            Dialogs.confirm('Confirm Remove Policy', 'Do you really want to remove this policy from the plan?', function () {
+                OrgSvcs.delete({ organizationId: params.org, entityType: 'plans', entityId: params.plan, versionsOrActivity: 'versions', version: params.version, policiesOrActivity: 'policies', policyId: policy.id }, function (reply) {
+                    removePolicy(policy);
+                }, PageLifecycle.handleError);
+            });
+        };
+        var pageData = PlanEntityLoader.getCommonData($scope, $location);
+        angular.extend(pageData, {
+            policies: $q(function (resolve, reject) {
+                OrgSvcs.query({ organizationId: params.org, entityType: 'plans', entityId: params.plan, versionsOrActivity: 'versions', version: params.version, policiesOrActivity: 'policies' }, function (policies) {
+                    resolve(policies);
+                }, reject);
+            })
+        });
+        PageLifecycle.loadPage('PlanPolicies', pageData, $scope, function () {
+            PageLifecycle.setPageTitle('plan-policies', [$scope.plan.name]);
+        });
+    }]);
+})(Apiman || (Apiman = {}));
+
+/// <reference path="../apimanPlugin.ts"/>
+/// <reference path="../services.ts"/>
+var Apiman;
+(function (Apiman) {
+    Apiman.PlanRedirectController = Apiman._module.controller("Apiman.PlanRedirectController", ['$q', '$scope', '$location', 'OrgSvcs', 'PageLifecycle', '$rootScope', 'CurrentUser', '$routeParams', function ($q, $scope, $location, OrgSvcs, PageLifecycle, $rootScope, CurrentUser, $routeParams) {
+        var orgId = $routeParams.org;
+        var planId = $routeParams.plan;
+        var pageData = {
+            versions: $q(function (resolve, reject) {
+                OrgSvcs.query({ organizationId: orgId, entityType: 'plans', entityId: planId, versionsOrActivity: 'versions' }, resolve, reject);
+            })
+        };
+        PageLifecycle.loadPage('PlanRedirect', pageData, $scope, function () {
+            var version = $scope.versions[0].version;
+            if (!version) {
+                PageLifecycle.handleError({ status: 404 });
+            }
+            else {
+                PageLifecycle.forwardTo('/orgs/{0}/plans/{1}/{2}', orgId, planId, version);
+            }
+        });
+    }]);
+    Apiman.PlanEntityLoader = Apiman._module.factory('PlanEntityLoader', ['$q', 'OrgSvcs', 'Logger', '$rootScope', '$routeParams', 'EntityStatusService', function ($q, OrgSvcs, Logger, $rootScope, $routeParams, EntityStatusService) {
+        return {
+            getCommonData: function ($scope, $location) {
+                var params = $routeParams;
+                return {
+                    version: $q(function (resolve, reject) {
+                        OrgSvcs.get({ organizationId: params.org, entityType: 'plans', entityId: params.plan, versionsOrActivity: 'versions', version: params.version }, function (version) {
+                            $scope.org = version.plan.organization;
+                            $scope.plan = version.plan;
+                            EntityStatusService.setEntityStatus(version.status);
+                            resolve(version);
+                        }, reject);
+                    }),
+                    versions: $q(function (resolve, reject) {
+                        OrgSvcs.query({ organizationId: params.org, entityType: 'plans', entityId: params.plan, versionsOrActivity: 'versions' }, resolve, reject);
+                    })
+                };
+            }
+        };
+    }]);
+    Apiman.PlanEntityController = Apiman._module.controller("Apiman.PlanEntityController", ['$q', '$scope', '$location', 'ActionSvcs', 'Logger', 'PageLifecycle', '$routeParams', 'OrgSvcs', 'EntityStatusService', function ($q, $scope, $location, ActionSvcs, Logger, PageLifecycle, $routeParams, OrgSvcs, EntityStatusService) {
+        var params = $routeParams;
+        $scope.setEntityStatus = function (status) {
+            EntityStatusService.setEntityStatus(status);
+        };
+        $scope.getEntityStatus = function () {
+            return EntityStatusService.getEntityStatus();
+        };
+        $scope.setVersion = function (plan) {
+            PageLifecycle.redirectTo('/orgs/{0}/plans/{1}/{2}', params.org, params.plan, plan.version);
+        };
+        $scope.lockPlan = function () {
+            $scope.lockButton.state = 'in-progress';
+            var lockAction = {
+                type: 'lockPlan',
+                entityId: params.plan,
+                organizationId: params.org,
+                entityVersion: params.version
+            };
+            ActionSvcs.save(lockAction, function (reply) {
+                $scope.version.status = 'Locked';
+                $scope.lockButton.state = 'complete';
+                $scope.setEntityStatus($scope.version.status);
+            }, PageLifecycle.handleError);
+        };
+        $scope.updatePlanDescription = function (updatedDescription) {
+            var updatePlanBean = {
+                description: updatedDescription
+            };
+            OrgSvcs.update({
+                organizationId: $scope.organizationId,
+                entityType: 'plans',
+                entityId: $scope.plan.id
+            }, updatePlanBean, function (success) {
+            }, function (error) {
+                Logger.error("Unable to update plan description:  {0}", error);
+            });
+        };
+    }]);
+})(Apiman || (Apiman = {}));
+
+/// <reference path="../apimanPlugin.ts"/>
+/// <reference path="../services.ts"/>
+var Apiman;
+(function (Apiman) {
+    Apiman.ServiceActivityController = Apiman._module.controller("Apiman.ServiceActivityController", ['$q', '$scope', '$location', 'PageLifecycle', 'ServiceEntityLoader', 'AuditSvcs', '$routeParams', function ($q, $scope, $location, PageLifecycle, ServiceEntityLoader, AuditSvcs, $routeParams) {
+        var params = $routeParams;
+        $scope.organizationId = params.org;
+        $scope.tab = 'activity';
+        $scope.version = params.version;
+        var getNextPage = function (successHandler, errorHandler) {
+            $scope.currentPage = $scope.currentPage + 1;
+            AuditSvcs.get({ organizationId: params.org, entityType: 'services', entityId: params.service, page: $scope.currentPage, count: 20 }, function (results) {
+                var entries = results.beans;
+                successHandler(entries);
+            }, errorHandler);
+        };
+        var pageData = ServiceEntityLoader.getCommonData($scope, $location);
+        pageData = angular.extend(pageData, {
+            auditEntries: $q(function (resolve, reject) {
+                $scope.currentPage = 0;
+                getNextPage(resolve, reject);
+            })
+        });
+        $scope.getNextPage = getNextPage;
+        PageLifecycle.loadPage('ServiceActivity', pageData, $scope, function () {
+            PageLifecycle.setPageTitle('service-activity', [$scope.service.name]);
+        });
+    }]);
+})(Apiman || (Apiman = {}));
+
+/// <reference path="../apimanPlugin.ts"/>
+/// <reference path="../services.ts"/>
+var Apiman;
+(function (Apiman) {
+    Apiman.ServiceContractsController = Apiman._module.controller("Apiman.ServiceContractsController", ['$q', '$scope', '$location', 'PageLifecycle', 'ServiceEntityLoader', 'OrgSvcs', 'Logger', '$routeParams', function ($q, $scope, $location, PageLifecycle, ServiceEntityLoader, OrgSvcs, Logger, $routeParams) {
+        var params = $routeParams;
+        $scope.organizationId = params.org;
+        $scope.tab = 'contracts';
+        $scope.version = params.version;
+        var getNextPage = function (successHandler, errorHandler) {
+            var maxCount = 10;
+            $scope.currentPage = $scope.currentPage + 1;
+            OrgSvcs.query({ organizationId: params.org, entityType: 'services', entityId: params.service, versionsOrActivity: 'versions', version: params.version, policiesOrActivity: 'contracts', page: $scope.currentPage, count: maxCount }, function (contracts) {
+                if (contracts.length == maxCount) {
+                    $scope.hasMore = true;
+                }
+                else {
+                    $scope.hasMore = false;
+                }
+                successHandler(contracts);
+            }, errorHandler);
+        };
+        var pageData = ServiceEntityLoader.getCommonData($scope, $location);
+        pageData = angular.extend(pageData, {
+            contracts: $q(function (resolve, reject) {
+                $scope.currentPage = 0;
+                getNextPage(resolve, reject);
+            })
+        });
+        $scope.getNextPage = getNextPage;
+        PageLifecycle.loadPage('ServiceContracts', pageData, $scope, function () {
+            Logger.debug("::: is public: {0}", $scope.version.publicService);
+            if ($scope.version.publicService) {
+                Logger.debug("::: num plans: {0}", $scope.version.plans.length);
+                if ($scope.version.plans.length == 0) {
+                    $scope.isPublicOnly = true;
+                }
+            }
+            PageLifecycle.setPageTitle('service-contracts', [$scope.service.name]);
+        });
+    }]);
+})(Apiman || (Apiman = {}));
+
+/// <reference path="../apimanPlugin.ts"/>
+/// <reference path="../services.ts"/>
+var Apiman;
+(function (Apiman) {
+    Apiman.ServiceEndpointController = Apiman._module.controller("Apiman.ServiceEndpointController", ['$q', '$scope', '$location', 'PageLifecycle', 'ServiceEntityLoader', 'OrgSvcs', 'ApimanSvcs', '$routeParams', function ($q, $scope, $location, PageLifecycle, ServiceEntityLoader, OrgSvcs, ApimanSvcs, $routeParams) {
+        var params = $routeParams;
+        $scope.organizationId = params.org;
+        $scope.tab = 'endpoint';
+        $scope.version = params.version;
+        var pageData = ServiceEntityLoader.getCommonData($scope, $location);
+        if (params.version != null) {
+            pageData = angular.extend(pageData, {
+                managedEndpoint: $q(function (resolve, reject) {
+                    OrgSvcs.get({ organizationId: params.org, entityType: 'services', entityId: params.service, versionsOrActivity: 'versions', version: params.version, policiesOrActivity: 'endpoint' }, resolve, reject);
+                })
+            });
+        }
+        PageLifecycle.loadPage('ServiceEndpoint', pageData, $scope, function () {
+            PageLifecycle.setPageTitle('service-endpoint', [$scope.service.name]);
+        });
+    }]);
+})(Apiman || (Apiman = {}));
+
+/// <reference path="../apimanPlugin.ts"/>
+/// <reference path="../services.ts"/>
+var Apiman;
+(function (Apiman) {
+    Apiman.ServiceImplController = Apiman._module.controller("Apiman.ServiceImplController", ['$q', '$scope', '$location', 'PageLifecycle', 'ServiceEntityLoader', 'OrgSvcs', 'ApimanSvcs', '$routeParams', 'EntityStatusService', function ($q, $scope, $location, PageLifecycle, ServiceEntityLoader, OrgSvcs, ApimanSvcs, $routeParams, EntityStatusService) {
+        var params = $routeParams;
+        $scope.organizationId = params.org;
+        $scope.tab = 'impl';
+        $scope.version = params.version;
+        $scope.typeOptions = ["rest", "soap"];
+        $scope.updatedService = new Object();
+        var pageData = ServiceEntityLoader.getCommonData($scope, $location);
+        if (params.version != null) {
+            pageData = angular.extend(pageData, {
+                gateways: $q(function (resolve, reject) {
+                    ApimanSvcs.query({ entityType: 'gateways' }, resolve, reject);
+                })
+            });
+        }
+        $scope.$watch('updatedService', function (newValue) {
+            if ($scope.version) {
+                var dirty = false;
+                if (newValue.endpoint != $scope.version.endpoint || newValue.endpointType != $scope.version.endpointType) {
+                    dirty = true;
+                }
+                else if (newValue.gateways && newValue.gateways.length > 0) {
+                    Logger.debug('Dirty because of gateways!');
+                    dirty = true;
+                }
+                $scope.isDirty = dirty;
+            }
+        }, true);
+        $scope.$watch('selectedGateway', function (newValue) {
+            Logger.info('New gateway selected: {0}', newValue);
+            var alreadySet = false;
+            if ($scope.version.gateways[0].gatewayId == newValue.id) {
+                alreadySet = true;
+            }
+            if (!alreadySet) {
+                $scope.updatedService.gateways = [{ gatewayId: newValue.id }];
+            }
+            else {
+                delete $scope.updatedService.gateways;
+            }
+        });
+        $scope.reset = function () {
+            $scope.updatedService.endpoint = $scope.version.endpoint;
+            $scope.updatedService.endpointType = $scope.version.endpointType;
+            delete $scope.updatedService.gateways;
+            angular.forEach($scope.gateways, function (gateway) {
+                // TODO support multiple gateway assignments here
+                if (gateway.id == $scope.version.gateways[0].gatewayId) {
+                    $scope.selectedGateway = gateway;
+                }
+            });
+            $scope.isDirty = false;
+        };
+        $scope.saveService = function () {
+            $scope.saveButton.state = 'in-progress';
+            OrgSvcs.update({ organizationId: params.org, entityType: 'services', entityId: params.service, versionsOrActivity: 'versions', version: params.version }, $scope.updatedService, function (reply) {
+                $scope.isDirty = false;
+                $scope.saveButton.state = 'complete';
+                $scope.version = reply;
+                EntityStatusService.setEntityStatus(reply.status);
+            }, PageLifecycle.handleError);
+        };
+        PageLifecycle.loadPage('ServiceImpl', pageData, $scope, function () {
+            $scope.reset();
+            PageLifecycle.setPageTitle('service-impl', [$scope.service.name]);
+        });
+    }]);
+})(Apiman || (Apiman = {}));
+
+/// <reference path="../apimanPlugin.ts"/>
+/// <reference path="../services.ts"/>
+var Apiman;
+(function (Apiman) {
+    Apiman.ServiceOverviewController = Apiman._module.controller("Apiman.ServiceOverviewController", ['$q', '$scope', '$location', 'PageLifecycle', 'ServiceEntityLoader', '$routeParams', function ($q, $scope, $location, PageLifecycle, ServiceEntityLoader, $routeParams) {
+        var params = $routeParams;
+        $scope.organizationId = params.org;
+        $scope.tab = 'overview';
+        $scope.version = params.version;
+        var pageData = ServiceEntityLoader.getCommonData($scope, $location);
+        PageLifecycle.loadPage('ServiceOverview', pageData, $scope, function () {
+            PageLifecycle.setPageTitle('service-overview', [$scope.service.name]);
+        });
+    }]);
+})(Apiman || (Apiman = {}));
+
+/// <reference path="../apimanPlugin.ts"/>
+/// <reference path="../services.ts"/>
+var Apiman;
+(function (Apiman) {
+    Apiman.ServicePlansController = Apiman._module.controller("Apiman.ServicePlansController", ['$q', '$scope', '$location', 'PageLifecycle', 'ServiceEntityLoader', 'OrgSvcs', 'ApimanSvcs', '$routeParams', 'EntityStatusService', function ($q, $scope, $location, PageLifecycle, ServiceEntityLoader, OrgSvcs, ApimanSvcs, $routeParams, EntityStatusService) {
+        var params = $routeParams;
+        $scope.organizationId = params.org;
+        $scope.tab = 'plans';
+        $scope.version = params.version;
+        $scope.updatedService = new Object();
+        var lockedPlans = [];
+        var getSelectedPlans = function () {
+            var selectedPlans = [];
+            for (var i = 0; i < lockedPlans.length; i++) {
+                var plan = lockedPlans[i];
+                if (plan.checked) {
+                    var selectedPlan = {};
+                    selectedPlan.planId = plan.id;
+                    selectedPlan.version = plan.selectedVersion;
+                    selectedPlans.push(selectedPlan);
+                }
+            }
+            return selectedPlans;
+        };
+        var pageData = ServiceEntityLoader.getCommonData($scope, $location);
+        if (params.version != null) {
+            pageData = angular.extend(pageData, {
+                plans: $q(function (resolve, reject) {
+                    OrgSvcs.query({ organizationId: params.org, entityType: 'plans' }, function (plans) {
+                        //for each plan find the versions that are locked
+                        var promises = [];
+                        angular.forEach(plans, function (plan) {
+                            promises.push($q(function (resolve, reject) {
+                                OrgSvcs.query({ organizationId: params.org, entityType: 'plans', entityId: plan.id, versionsOrActivity: 'versions' }, function (planVersions) {
+                                    //for each plan find the versions that are locked
+                                    var lockedVersions = [];
+                                    for (var j = 0; j < planVersions.length; j++) {
+                                        var planVersion = planVersions[j];
+                                        if (planVersion.status == "Locked") {
+                                            lockedVersions.push(planVersion.version);
+                                        }
+                                    }
+                                    // if we found locked plan versions then add them
+                                    if (lockedVersions.length > 0) {
+                                        plan.lockedVersions = lockedVersions;
+                                        lockedPlans.push(plan);
+                                    }
+                                    resolve(planVersions);
+                                }, reject);
+                            }));
+                        });
+                        $q.all(promises).then(function () {
+                            lockedPlans.sort(function (a, b) {
+                                if (a.id.toLowerCase() < b.id.toLowerCase()) {
+                                    return -1;
+                                }
+                                else if (b.id < a.id) {
+                                    return 1;
+                                }
+                                else {
+                                    return 0;
+                                }
+                            });
+                            resolve(lockedPlans);
+                        });
+                    }, reject);
+                })
+            });
+        }
+        $scope.$watch('updatedService', function (newValue) {
+            var dirty = false;
+            if (newValue.publicService != $scope.version.publicService) {
+                dirty = true;
+            }
+            if (newValue.plans.length != $scope.version.plans.length) {
+                dirty = true;
+            }
+            else {
+                for (var i = 0; i < newValue.plans.length; i++) {
+                    var p1 = newValue.plans[i];
+                    var p2 = $scope.version.plans[i];
+                    if (p1.planId != p2.planId || p1.version != p2.version) {
+                        dirty = true;
+                    }
+                }
+            }
+            $scope.isDirty = dirty;
+        }, true);
+        $scope.$watch('plans', function (newValue) {
+            $scope.updatedService.plans = getSelectedPlans();
+        }, true);
+        $scope.reset = function () {
+            $scope.updatedService.publicService = $scope.version.publicService;
+            for (var i = 0; i < lockedPlans.length; i++) {
+                lockedPlans[i].selectedVersion = lockedPlans[i].lockedVersions[0];
+                for (var j = 0; j < $scope.version.plans.length; j++) {
+                    if (lockedPlans[i].id == $scope.version.plans[j].planId) {
+                        lockedPlans[i].checked = true;
+                        lockedPlans[i].selectedVersion = $scope.version.plans[j].version;
+                        break;
+                    }
+                }
+            }
+            $scope.updatedService.plans = getSelectedPlans();
+            $scope.isDirty = false;
+        };
+        $scope.saveService = function () {
+            $scope.saveButton.state = 'in-progress';
+            OrgSvcs.update({ organizationId: params.org, entityType: 'services', entityId: params.service, versionsOrActivity: 'versions', version: params.version }, $scope.updatedService, function (reply) {
+                $scope.version.publicService = $scope.updatedService.publicService;
+                $scope.isDirty = false;
+                $scope.saveButton.state = 'complete';
+                $scope.version = reply;
+                EntityStatusService.setEntityStatus(reply.status);
+            }, PageLifecycle.handleError);
+        };
+        PageLifecycle.loadPage('ServicePlans', pageData, $scope, function () {
+            $scope.reset();
+            PageLifecycle.setPageTitle('service-plans', [$scope.service.name]);
+        });
+    }]);
+})(Apiman || (Apiman = {}));
+
+/// <reference path="../apimanPlugin.ts"/>
+/// <reference path="../services.ts"/>
+var Apiman;
+(function (Apiman) {
+    Apiman.ServicePoliciesController = Apiman._module.controller("Apiman.ServicePoliciesController", ['$q', '$scope', '$location', 'PageLifecycle', 'ServiceEntityLoader', 'OrgSvcs', 'Dialogs', '$routeParams', function ($q, $scope, $location, PageLifecycle, ServiceEntityLoader, OrgSvcs, Dialogs, $routeParams) {
+        var params = $routeParams;
+        $scope.organizationId = params.org;
+        $scope.tab = 'policies';
+        $scope.version = params.version;
+        var removePolicy = function (policy) {
+            angular.forEach($scope.policies, function (p, index) {
+                if (policy === p) {
+                    $scope.policies.splice(index, 1);
+                }
+            });
+        };
+        $scope.removePolicy = function (policy) {
+            Dialogs.confirm('Confirm Remove Policy', 'Do you really want to remove this policy from the service?', function () {
+                OrgSvcs.delete({ organizationId: params.org, entityType: 'services', entityId: params.service, versionsOrActivity: 'versions', version: params.version, policiesOrActivity: 'policies', policyId: policy.id }, function (reply) {
+                    removePolicy(policy);
+                }, PageLifecycle.handleError);
+            });
+        };
+        var pageData = ServiceEntityLoader.getCommonData($scope, $location);
+        pageData = angular.extend(pageData, {
+            policies: $q(function (resolve, reject) {
+                OrgSvcs.query({ organizationId: params.org, entityType: 'services', entityId: params.service, versionsOrActivity: 'versions', version: params.version, policiesOrActivity: 'policies' }, resolve, reject);
+            })
+        });
+        PageLifecycle.loadPage('ServicePolicies', pageData, $scope, function () {
+            PageLifecycle.setPageTitle('service-policies', [$scope.service.name]);
+        });
+    }]);
+})(Apiman || (Apiman = {}));
+
+/// <reference path="../apimanPlugin.ts"/>
+/// <reference path="../services.ts"/>
+var Apiman;
+(function (Apiman) {
+    Apiman.ServiceRedirectController = Apiman._module.controller("Apiman.ServiceRedirectController", ['$q', '$scope', '$location', 'OrgSvcs', 'PageLifecycle', '$rootScope', 'CurrentUser', '$routeParams', function ($q, $scope, $location, OrgSvcs, PageLifecycle, $rootScope, CurrentUser, $routeParams) {
+        var orgId = $routeParams.org;
+        var serviceId = $routeParams.service;
+        var pageData = {
+            versions: $q(function (resolve, reject) {
+                OrgSvcs.query({ organizationId: orgId, entityType: 'services', entityId: serviceId, versionsOrActivity: 'versions' }, resolve, reject);
+            })
+        };
+        PageLifecycle.loadPage('ServiceRedirect', pageData, $scope, function () {
+            var version = $scope.versions[0].version;
+            if (!version) {
+                PageLifecycle.handleError({ status: 404 });
+            }
+            else {
+                PageLifecycle.forwardTo('/orgs/{0}/services/{1}/{2}', orgId, serviceId, version);
+            }
+        });
+    }]);
+    Apiman.ServiceEntityLoader = Apiman._module.factory('ServiceEntityLoader', ['$q', 'OrgSvcs', 'Logger', '$rootScope', '$routeParams', 'EntityStatusService', function ($q, OrgSvcs, Logger, $rootScope, $routeParams, EntityStatusService) {
+        return {
+            getCommonData: function ($scope, $location) {
+                var params = $routeParams;
+                return {
+                    version: $q(function (resolve, reject) {
+                        OrgSvcs.get({ organizationId: params.org, entityType: 'services', entityId: params.service, versionsOrActivity: 'versions', version: params.version }, function (version) {
+                            $scope.org = version.service.organization;
+                            $scope.service = version.service;
+                            $rootScope.mruService = version;
+                            EntityStatusService.setEntityStatus(version.status);
+                            resolve(version);
+                        }, reject);
+                    }),
+                    versions: $q(function (resolve, reject) {
+                        OrgSvcs.query({ organizationId: params.org, entityType: 'services', entityId: params.service, versionsOrActivity: 'versions' }, resolve, reject);
+                    })
+                };
+            }
+        };
+    }]);
+    Apiman.ServiceEntityController = Apiman._module.controller("Apiman.ServiceEntityController", ['$q', '$scope', '$location', 'ActionSvcs', 'Logger', 'Dialogs', 'PageLifecycle', '$routeParams', 'OrgSvcs', 'EntityStatusService', function ($q, $scope, $location, ActionSvcs, Logger, Dialogs, PageLifecycle, $routeParams, OrgSvcs, EntityStatusService) {
+        var params = $routeParams;
+        $scope.params = params;
+        $scope.setEntityStatus = function (status) {
+            EntityStatusService.setEntityStatus(status);
+        };
+        $scope.getEntityStatus = function () {
+            return EntityStatusService.getEntityStatus();
+        };
+        $scope.setVersion = function (service) {
+            PageLifecycle.redirectTo('/orgs/{0}/services/{1}/{2}', params.org, params.service, service.version);
+        };
+        $scope.publishService = function () {
+            $scope.publishButton.state = 'in-progress';
+            var publishAction = {
+                type: 'publishService',
+                entityId: params.service,
+                organizationId: params.org,
+                entityVersion: params.version
+            };
+            ActionSvcs.save(publishAction, function (reply) {
+                $scope.version.status = 'Published';
+                $scope.publishButton.state = 'complete';
+                $scope.setEntityStatus($scope.version.status);
+            }, PageLifecycle.handleError);
+        };
+        $scope.retireService = function () {
+            $scope.retireButton.state = 'in-progress';
+            Dialogs.confirm('Confirm Retire Service', 'Do you really want to retire this service?  This action cannot be undone.', function () {
+                var retireAction = {
+                    type: 'retireService',
+                    entityId: params.service,
+                    organizationId: params.org,
+                    entityVersion: params.version
+                };
+                ActionSvcs.save(retireAction, function (reply) {
+                    $scope.version.status = 'Retired';
+                    $scope.retireButton.state = 'complete';
+                    $scope.setEntityStatus($scope.version.status);
+                }, PageLifecycle.handleError);
+            }, function () {
+                $scope.retireButton.state = 'complete';
+            });
+        };
+        $scope.updateServiceDescription = function (updatedDescription) {
+            var updateServiceBean = {
+                description: updatedDescription
+            };
+            OrgSvcs.update({
+                organizationId: $scope.organizationId,
+                entityType: 'services',
+                entityId: $scope.service.id,
+            }, updateServiceBean, function (success) {
+                Logger.info("Updated sucessfully");
+            }, function (error) {
+                Logger.error("Unable to update service description:  {0}", error);
+            });
+        };
+    }]);
+})(Apiman || (Apiman = {}));
+
+/// <reference path="../apimanPlugin.ts"/>
+/// <reference path="../services.ts"/>
+var Apiman;
+(function (Apiman) {
+    Apiman.UserActivityController = Apiman._module.controller("Apiman.UserActivityController", ['$q', '$scope', '$location', 'UserSvcs', 'UserAuditSvcs', 'PageLifecycle', '$routeParams', function ($q, $scope, $location, UserSvcs, UserAuditSvcs, PageLifecycle, $routeParams) {
+        $scope.tab = 'activity';
+        var getNextPage = function (successHandler, errorHandler) {
+            $scope.currentPage = $scope.currentPage + 1;
+            UserAuditSvcs.get({ user: $routeParams.user, page: $scope.currentPage, count: 20 }, function (results) {
+                var entries = results.beans;
+                successHandler(entries);
+            }, errorHandler);
+        };
+        var pageData = {
+            user: $q(function (resolve, reject) {
+                UserSvcs.get({ user: $routeParams.user }, function (user) {
+                    if (!user.fullName) {
+                        user.fullName = user.username;
+                    }
+                    resolve(user);
+                }, reject);
+            }),
+            auditEntries: $q(function (resolve, reject) {
+                $scope.currentPage = 0;
+                getNextPage(resolve, reject);
+            })
+        };
+        $scope.getNextPage = getNextPage;
+        PageLifecycle.loadPage('UserActivity', pageData, $scope, function () {
+            PageLifecycle.setPageTitle('user-activity', [$scope.user.fullName]);
+        });
+    }]);
+})(Apiman || (Apiman = {}));
+
+/// <reference path="../apimanPlugin.ts"/>
+/// <reference path="../services.ts"/>
+var Apiman;
+(function (Apiman) {
+    Apiman.UserAppsController = Apiman._module.controller("Apiman.UserAppsController", ['$q', '$scope', '$location', 'UserSvcs', 'PageLifecycle', 'Logger', '$routeParams', function ($q, $scope, $location, UserSvcs, PageLifecycle, Logger, $routeParams) {
+        $scope.tab = 'applications';
+        $scope.filterApps = function (value) {
+            if (!value) {
+                $scope.filteredApps = $scope.applications;
+            }
+            else {
+                var filtered = [];
+                angular.forEach($scope.applications, function (app) {
+                    if (app.name.toLowerCase().indexOf(value.toLowerCase()) > -1 || app.organizationName.toLowerCase().indexOf(value.toLowerCase()) > -1) {
+                        filtered.push(app);
+                    }
+                });
+                $scope.filteredApps = filtered;
+            }
+        };
+        var pageData = {
+            user: $q(function (resolve, reject) {
+                UserSvcs.get({ user: $routeParams.user }, function (user) {
+                    if (!user.fullName) {
+                        user.fullName = user.username;
+                    }
+                    resolve(user);
+                }, reject);
+            }),
+            applications: $q(function (resolve, reject) {
+                UserSvcs.query({ user: $routeParams.user, entityType: 'applications' }, function (userApps) {
+                    $scope.filteredApps = userApps;
+                    resolve(userApps);
+                }, reject);
+            })
+        };
+        PageLifecycle.loadPage('UserApps', pageData, $scope, function () {
+            PageLifecycle.setPageTitle('user-apps', [$scope.user.fullName]);
+        });
+    }]);
+})(Apiman || (Apiman = {}));
+
+/// <reference path="../apimanPlugin.ts"/>
+/// <reference path="../services.ts"/>
+var Apiman;
+(function (Apiman) {
+    Apiman.UserOrgsController = Apiman._module.controller("Apiman.UserOrgsController", ['$q', '$scope', '$location', 'UserSvcs', 'PageLifecycle', '$routeParams', function ($q, $scope, $location, UserSvcs, PageLifecycle, $routeParams) {
+        $scope.tab = 'organizations';
+        $scope.filterOrgs = function (value) {
+            if (!value) {
+                $scope.filteredOrgs = $scope.organizations;
+            }
+            else {
+                var filtered = [];
+                angular.forEach($scope.organizations, function (org) {
+                    if (org.name.toLowerCase().indexOf(value.toLowerCase()) > -1) {
+                        filtered.push(org);
+                    }
+                });
+                $scope.filteredOrgs = filtered;
+            }
+        };
+        var pageData = {
+            user: $q(function (resolve, reject) {
+                UserSvcs.get({ user: $routeParams.user }, function (user) {
+                    if (!user.fullName) {
+                        user.fullName = user.username;
+                    }
+                    resolve(user);
+                }, reject);
+            }),
+            organizations: $q(function (resolve, reject) {
+                UserSvcs.query({ user: $routeParams.user, entityType: 'organizations' }, function (userOrgs) {
+                    $scope.filteredOrgs = userOrgs;
+                    resolve(userOrgs);
+                }, reject);
+            })
+        };
+        PageLifecycle.loadPage('UserOrgs', pageData, $scope, function () {
+            PageLifecycle.setPageTitle('user-orgs', [$scope.user.fullName]);
+        });
+    }]);
+})(Apiman || (Apiman = {}));
+
+/// <reference path="../apimanPlugin.ts"/>
+/// <reference path="../services.ts"/>
+var Apiman;
+(function (Apiman) {
+    Apiman.UserServicesController = Apiman._module.controller("Apiman.UserServicesController", ['$q', '$scope', '$location', 'UserSvcs', 'PageLifecycle', '$routeParams', function ($q, $scope, $location, UserSvcs, PageLifecycle, $routeParams) {
+        $scope.tab = 'services';
+        $scope.filterServices = function (value) {
+            if (!value) {
+                $scope.filteredServices = $scope.services;
+            }
+            else {
+                var filtered = [];
+                angular.forEach($scope.services, function (svc) {
+                    if (svc.name.toLowerCase().indexOf(value.toLowerCase()) > -1 || svc.organizationName.toLowerCase().indexOf(value.toLowerCase()) > -1) {
+                        filtered.push(svc);
+                    }
+                });
+                $scope.filteredServices = filtered;
+            }
+        };
+        var pageData = {
+            user: $q(function (resolve, reject) {
+                UserSvcs.get({ user: $routeParams.user }, function (user) {
+                    if (!user.fullName) {
+                        user.fullName = user.username;
+                    }
+                    resolve(user);
+                }, reject);
+            }),
+            services: $q(function (resolve, reject) {
+                UserSvcs.query({ user: $routeParams.user, entityType: 'services' }, function (userServices) {
+                    $scope.filteredServices = userServices;
+                    resolve(userServices);
+                }, reject);
+            })
+        };
+        PageLifecycle.loadPage('UserServices', pageData, $scope, function () {
+            PageLifecycle.setPageTitle('user-services', [$scope.user.fullName]);
+        });
+    }]);
+})(Apiman || (Apiman = {}));
+
+/// <reference path="../apimanPlugin.ts"/>
+/// <reference path="../services.ts"/>
+var Apiman;
+(function (Apiman) {
+    Apiman.UserRedirectController = Apiman._module.controller("Apiman.UserRedirectController", ['$q', '$scope', '$location', 'PageLifecycle', '$routeParams', function ($q, $scope, $location, PageLifecycle, $routeParams) {
+        PageLifecycle.loadPage('UserRedirect', undefined, $scope, function () {
+            PageLifecycle.forwardTo('/users/{0}/orgs', $routeParams.user);
+        });
+    }]);
+})(Apiman || (Apiman = {}));
+
+/// <reference path="../apimanPlugin.ts"/>
+/// <reference path="../services.ts"/>
+var Apiman;
+(function (Apiman) {
     Apiman.OrgActivityController = Apiman._module.controller("Apiman.OrgActivityController", ['$q', '$scope', '$location', 'OrgSvcs', 'PageLifecycle', '$rootScope', 'AuditSvcs', '$routeParams', function ($q, $scope, $location, OrgSvcs, PageLifecycle, $rootScope, AuditSvcs, $routeParams) {
         var params = $routeParams;
         $scope.organizationId = params.org;
@@ -3483,800 +4287,12 @@ var Apiman;
     }]);
 })(Apiman || (Apiman = {}));
 
-/// <reference path="../apimanPlugin.ts"/>
-/// <reference path="../services.ts"/>
-var Apiman;
-(function (Apiman) {
-    Apiman.PlanActivityController = Apiman._module.controller("Apiman.PlanActivityController", ['$q', '$scope', '$location', 'OrgSvcs', 'AuditSvcs', 'Logger', 'PageLifecycle', 'PlanEntityLoader', '$routeParams', function ($q, $scope, $location, OrgSvcs, AuditSvcs, Logger, PageLifecycle, PlanEntityLoader, $routeParams) {
-        var params = $routeParams;
-        $scope.organizationId = params.org;
-        $scope.tab = 'activity';
-        $scope.version = params.version;
-        var getNextPage = function (successHandler, errorHandler) {
-            $scope.currentPage = $scope.currentPage + 1;
-            AuditSvcs.get({ organizationId: params.org, entityType: 'plans', entityId: params.plan, page: $scope.currentPage, count: 20 }, function (results) {
-                var entries = results.beans;
-                successHandler(entries);
-            }, errorHandler);
-        };
-        var pageData = PlanEntityLoader.getCommonData($scope, $location);
-        pageData = angular.extend(pageData, {
-            auditEntries: $q(function (resolve, reject) {
-                $scope.currentPage = 0;
-                getNextPage(resolve, reject);
-            })
-        });
-        $scope.getNextPage = getNextPage;
-        PageLifecycle.loadPage('PlanActivity', pageData, $scope, function () {
-            PageLifecycle.setPageTitle('plan-activity', [$scope.plan.name]);
-        });
-    }]);
-})(Apiman || (Apiman = {}));
-
-/// <reference path="../apimanPlugin.ts"/>
-/// <reference path="../services.ts"/>
-var Apiman;
-(function (Apiman) {
-    Apiman.PlanOverviewController = Apiman._module.controller("Apiman.PlanOverviewController", ['$q', '$scope', '$location', 'PageLifecycle', 'PlanEntityLoader', '$routeParams', function ($q, $scope, $location, PageLifecycle, PlanEntityLoader, $routeParams) {
-        var params = $routeParams;
-        $scope.organizationId = params.org;
-        $scope.tab = 'overview';
-        var pageData = PlanEntityLoader.getCommonData($scope, $location);
-        PageLifecycle.loadPage('PlanOverview', pageData, $scope, function () {
-            PageLifecycle.setPageTitle('plan-overview', [$scope.plan.name]);
-        });
-    }]);
-})(Apiman || (Apiman = {}));
-
-/// <reference path="../apimanPlugin.ts"/>
-/// <reference path="../services.ts"/>
-var Apiman;
-(function (Apiman) {
-    Apiman.PlanPoliciesController = Apiman._module.controller("Apiman.PlanPoliciesController", ['$q', '$scope', '$location', 'OrgSvcs', 'ApimanSvcs', 'Logger', 'PageLifecycle', 'PlanEntityLoader', 'Dialogs', '$routeParams', function ($q, $scope, $location, OrgSvcs, ApimanSvcs, Logger, PageLifecycle, PlanEntityLoader, Dialogs, $routeParams) {
-        var params = $routeParams;
-        $scope.organizationId = params.org;
-        $scope.tab = 'policies';
-        $scope.version = params.version;
-        var removePolicy = function (policy) {
-            angular.forEach($scope.policies, function (p, index) {
-                if (policy === p) {
-                    $scope.policies.splice(index, 1);
-                }
-            });
-        };
-        $scope.removePolicy = function (policy) {
-            Dialogs.confirm('Confirm Remove Policy', 'Do you really want to remove this policy from the plan?', function () {
-                OrgSvcs.delete({ organizationId: params.org, entityType: 'plans', entityId: params.plan, versionsOrActivity: 'versions', version: params.version, policiesOrActivity: 'policies', policyId: policy.id }, function (reply) {
-                    removePolicy(policy);
-                }, PageLifecycle.handleError);
-            });
-        };
-        var pageData = PlanEntityLoader.getCommonData($scope, $location);
-        angular.extend(pageData, {
-            policies: $q(function (resolve, reject) {
-                OrgSvcs.query({ organizationId: params.org, entityType: 'plans', entityId: params.plan, versionsOrActivity: 'versions', version: params.version, policiesOrActivity: 'policies' }, function (policies) {
-                    resolve(policies);
-                }, reject);
-            })
-        });
-        PageLifecycle.loadPage('PlanPolicies', pageData, $scope, function () {
-            PageLifecycle.setPageTitle('plan-policies', [$scope.plan.name]);
-        });
-    }]);
-})(Apiman || (Apiman = {}));
-
-/// <reference path="../apimanPlugin.ts"/>
-/// <reference path="../services.ts"/>
-var Apiman;
-(function (Apiman) {
-    Apiman.PlanRedirectController = Apiman._module.controller("Apiman.PlanRedirectController", ['$q', '$scope', '$location', 'OrgSvcs', 'PageLifecycle', '$rootScope', 'CurrentUser', '$routeParams', function ($q, $scope, $location, OrgSvcs, PageLifecycle, $rootScope, CurrentUser, $routeParams) {
-        var orgId = $routeParams.org;
-        var planId = $routeParams.plan;
-        var pageData = {
-            versions: $q(function (resolve, reject) {
-                OrgSvcs.query({ organizationId: orgId, entityType: 'plans', entityId: planId, versionsOrActivity: 'versions' }, resolve, reject);
-            })
-        };
-        PageLifecycle.loadPage('PlanRedirect', pageData, $scope, function () {
-            var version = $scope.versions[0].version;
-            if (!version) {
-                PageLifecycle.handleError({ status: 404 });
-            }
-            else {
-                PageLifecycle.forwardTo('/orgs/{0}/plans/{1}/{2}', orgId, planId, version);
-            }
-        });
-    }]);
-    Apiman.PlanEntityLoader = Apiman._module.factory('PlanEntityLoader', ['$q', 'OrgSvcs', 'Logger', '$rootScope', '$routeParams', 'EntityStatusService', function ($q, OrgSvcs, Logger, $rootScope, $routeParams, EntityStatusService) {
-        return {
-            getCommonData: function ($scope, $location) {
-                var params = $routeParams;
-                return {
-                    version: $q(function (resolve, reject) {
-                        OrgSvcs.get({ organizationId: params.org, entityType: 'plans', entityId: params.plan, versionsOrActivity: 'versions', version: params.version }, function (version) {
-                            $scope.org = version.plan.organization;
-                            $scope.plan = version.plan;
-                            EntityStatusService.setEntityStatus(version.status);
-                            resolve(version);
-                        }, reject);
-                    }),
-                    versions: $q(function (resolve, reject) {
-                        OrgSvcs.query({ organizationId: params.org, entityType: 'plans', entityId: params.plan, versionsOrActivity: 'versions' }, resolve, reject);
-                    })
-                };
-            }
-        };
-    }]);
-    Apiman.PlanEntityController = Apiman._module.controller("Apiman.PlanEntityController", ['$q', '$scope', '$location', 'ActionSvcs', 'Logger', 'PageLifecycle', '$routeParams', 'OrgSvcs', 'EntityStatusService', function ($q, $scope, $location, ActionSvcs, Logger, PageLifecycle, $routeParams, OrgSvcs, EntityStatusService) {
-        var params = $routeParams;
-        $scope.setEntityStatus = function (status) {
-            EntityStatusService.setEntityStatus(status);
-        };
-        $scope.getEntityStatus = function () {
-            return EntityStatusService.getEntityStatus();
-        };
-        $scope.setVersion = function (plan) {
-            PageLifecycle.redirectTo('/orgs/{0}/plans/{1}/{2}', params.org, params.plan, plan.version);
-        };
-        $scope.lockPlan = function () {
-            $scope.lockButton.state = 'in-progress';
-            var lockAction = {
-                type: 'lockPlan',
-                entityId: params.plan,
-                organizationId: params.org,
-                entityVersion: params.version
-            };
-            ActionSvcs.save(lockAction, function (reply) {
-                $scope.version.status = 'Locked';
-                $scope.lockButton.state = 'complete';
-                $scope.setEntityStatus($scope.version.status);
-            }, PageLifecycle.handleError);
-        };
-        $scope.updatePlanDescription = function (updatedDescription) {
-            var updatePlanBean = {
-                description: updatedDescription
-            };
-            OrgSvcs.update({
-                organizationId: $scope.organizationId,
-                entityType: 'plans',
-                entityId: $scope.plan.id
-            }, updatePlanBean, function (success) {
-            }, function (error) {
-                Logger.error("Unable to update plan description:  {0}", error);
-            });
-        };
-    }]);
-})(Apiman || (Apiman = {}));
-
-/// <reference path="../apimanPlugin.ts"/>
-/// <reference path="../services.ts"/>
-var Apiman;
-(function (Apiman) {
-    Apiman.UserActivityController = Apiman._module.controller("Apiman.UserActivityController", ['$q', '$scope', '$location', 'UserSvcs', 'UserAuditSvcs', 'PageLifecycle', '$routeParams', function ($q, $scope, $location, UserSvcs, UserAuditSvcs, PageLifecycle, $routeParams) {
-        $scope.tab = 'activity';
-        var getNextPage = function (successHandler, errorHandler) {
-            $scope.currentPage = $scope.currentPage + 1;
-            UserAuditSvcs.get({ user: $routeParams.user, page: $scope.currentPage, count: 20 }, function (results) {
-                var entries = results.beans;
-                successHandler(entries);
-            }, errorHandler);
-        };
-        var pageData = {
-            user: $q(function (resolve, reject) {
-                UserSvcs.get({ user: $routeParams.user }, function (user) {
-                    if (!user.fullName) {
-                        user.fullName = user.username;
-                    }
-                    resolve(user);
-                }, reject);
-            }),
-            auditEntries: $q(function (resolve, reject) {
-                $scope.currentPage = 0;
-                getNextPage(resolve, reject);
-            })
-        };
-        $scope.getNextPage = getNextPage;
-        PageLifecycle.loadPage('UserActivity', pageData, $scope, function () {
-            PageLifecycle.setPageTitle('user-activity', [$scope.user.fullName]);
-        });
-    }]);
-})(Apiman || (Apiman = {}));
-
-/// <reference path="../apimanPlugin.ts"/>
-/// <reference path="../services.ts"/>
-var Apiman;
-(function (Apiman) {
-    Apiman.UserAppsController = Apiman._module.controller("Apiman.UserAppsController", ['$q', '$scope', '$location', 'UserSvcs', 'PageLifecycle', 'Logger', '$routeParams', function ($q, $scope, $location, UserSvcs, PageLifecycle, Logger, $routeParams) {
-        $scope.tab = 'applications';
-        $scope.filterApps = function (value) {
-            if (!value) {
-                $scope.filteredApps = $scope.applications;
-            }
-            else {
-                var filtered = [];
-                angular.forEach($scope.applications, function (app) {
-                    if (app.name.toLowerCase().indexOf(value.toLowerCase()) > -1 || app.organizationName.toLowerCase().indexOf(value.toLowerCase()) > -1) {
-                        filtered.push(app);
-                    }
-                });
-                $scope.filteredApps = filtered;
-            }
-        };
-        var pageData = {
-            user: $q(function (resolve, reject) {
-                UserSvcs.get({ user: $routeParams.user }, function (user) {
-                    if (!user.fullName) {
-                        user.fullName = user.username;
-                    }
-                    resolve(user);
-                }, reject);
-            }),
-            applications: $q(function (resolve, reject) {
-                UserSvcs.query({ user: $routeParams.user, entityType: 'applications' }, function (userApps) {
-                    $scope.filteredApps = userApps;
-                    resolve(userApps);
-                }, reject);
-            })
-        };
-        PageLifecycle.loadPage('UserApps', pageData, $scope, function () {
-            PageLifecycle.setPageTitle('user-apps', [$scope.user.fullName]);
-        });
-    }]);
-})(Apiman || (Apiman = {}));
-
-/// <reference path="../apimanPlugin.ts"/>
-/// <reference path="../services.ts"/>
-var Apiman;
-(function (Apiman) {
-    Apiman.UserOrgsController = Apiman._module.controller("Apiman.UserOrgsController", ['$q', '$scope', '$location', 'UserSvcs', 'PageLifecycle', '$routeParams', function ($q, $scope, $location, UserSvcs, PageLifecycle, $routeParams) {
-        $scope.tab = 'organizations';
-        $scope.filterOrgs = function (value) {
-            if (!value) {
-                $scope.filteredOrgs = $scope.organizations;
-            }
-            else {
-                var filtered = [];
-                angular.forEach($scope.organizations, function (org) {
-                    if (org.name.toLowerCase().indexOf(value.toLowerCase()) > -1) {
-                        filtered.push(org);
-                    }
-                });
-                $scope.filteredOrgs = filtered;
-            }
-        };
-        var pageData = {
-            user: $q(function (resolve, reject) {
-                UserSvcs.get({ user: $routeParams.user }, function (user) {
-                    if (!user.fullName) {
-                        user.fullName = user.username;
-                    }
-                    resolve(user);
-                }, reject);
-            }),
-            organizations: $q(function (resolve, reject) {
-                UserSvcs.query({ user: $routeParams.user, entityType: 'organizations' }, function (userOrgs) {
-                    $scope.filteredOrgs = userOrgs;
-                    resolve(userOrgs);
-                }, reject);
-            })
-        };
-        PageLifecycle.loadPage('UserOrgs', pageData, $scope, function () {
-            PageLifecycle.setPageTitle('user-orgs', [$scope.user.fullName]);
-        });
-    }]);
-})(Apiman || (Apiman = {}));
-
-/// <reference path="../apimanPlugin.ts"/>
-/// <reference path="../services.ts"/>
-var Apiman;
-(function (Apiman) {
-    Apiman.UserServicesController = Apiman._module.controller("Apiman.UserServicesController", ['$q', '$scope', '$location', 'UserSvcs', 'PageLifecycle', '$routeParams', function ($q, $scope, $location, UserSvcs, PageLifecycle, $routeParams) {
-        $scope.tab = 'services';
-        $scope.filterServices = function (value) {
-            if (!value) {
-                $scope.filteredServices = $scope.services;
-            }
-            else {
-                var filtered = [];
-                angular.forEach($scope.services, function (svc) {
-                    if (svc.name.toLowerCase().indexOf(value.toLowerCase()) > -1 || svc.organizationName.toLowerCase().indexOf(value.toLowerCase()) > -1) {
-                        filtered.push(svc);
-                    }
-                });
-                $scope.filteredServices = filtered;
-            }
-        };
-        var pageData = {
-            user: $q(function (resolve, reject) {
-                UserSvcs.get({ user: $routeParams.user }, function (user) {
-                    if (!user.fullName) {
-                        user.fullName = user.username;
-                    }
-                    resolve(user);
-                }, reject);
-            }),
-            services: $q(function (resolve, reject) {
-                UserSvcs.query({ user: $routeParams.user, entityType: 'services' }, function (userServices) {
-                    $scope.filteredServices = userServices;
-                    resolve(userServices);
-                }, reject);
-            })
-        };
-        PageLifecycle.loadPage('UserServices', pageData, $scope, function () {
-            PageLifecycle.setPageTitle('user-services', [$scope.user.fullName]);
-        });
-    }]);
-})(Apiman || (Apiman = {}));
-
-/// <reference path="../apimanPlugin.ts"/>
-/// <reference path="../services.ts"/>
-var Apiman;
-(function (Apiman) {
-    Apiman.UserRedirectController = Apiman._module.controller("Apiman.UserRedirectController", ['$q', '$scope', '$location', 'PageLifecycle', '$routeParams', function ($q, $scope, $location, PageLifecycle, $routeParams) {
-        PageLifecycle.loadPage('UserRedirect', undefined, $scope, function () {
-            PageLifecycle.forwardTo('/users/{0}/orgs', $routeParams.user);
-        });
-    }]);
-})(Apiman || (Apiman = {}));
-
-/// <reference path="../apimanPlugin.ts"/>
-/// <reference path="../services.ts"/>
-var Apiman;
-(function (Apiman) {
-    Apiman.ServiceActivityController = Apiman._module.controller("Apiman.ServiceActivityController", ['$q', '$scope', '$location', 'PageLifecycle', 'ServiceEntityLoader', 'AuditSvcs', '$routeParams', function ($q, $scope, $location, PageLifecycle, ServiceEntityLoader, AuditSvcs, $routeParams) {
-        var params = $routeParams;
-        $scope.organizationId = params.org;
-        $scope.tab = 'activity';
-        $scope.version = params.version;
-        var getNextPage = function (successHandler, errorHandler) {
-            $scope.currentPage = $scope.currentPage + 1;
-            AuditSvcs.get({ organizationId: params.org, entityType: 'services', entityId: params.service, page: $scope.currentPage, count: 20 }, function (results) {
-                var entries = results.beans;
-                successHandler(entries);
-            }, errorHandler);
-        };
-        var pageData = ServiceEntityLoader.getCommonData($scope, $location);
-        pageData = angular.extend(pageData, {
-            auditEntries: $q(function (resolve, reject) {
-                $scope.currentPage = 0;
-                getNextPage(resolve, reject);
-            })
-        });
-        $scope.getNextPage = getNextPage;
-        PageLifecycle.loadPage('ServiceActivity', pageData, $scope, function () {
-            PageLifecycle.setPageTitle('service-activity', [$scope.service.name]);
-        });
-    }]);
-})(Apiman || (Apiman = {}));
-
-/// <reference path="../apimanPlugin.ts"/>
-/// <reference path="../services.ts"/>
-var Apiman;
-(function (Apiman) {
-    Apiman.ServiceContractsController = Apiman._module.controller("Apiman.ServiceContractsController", ['$q', '$scope', '$location', 'PageLifecycle', 'ServiceEntityLoader', 'OrgSvcs', 'Logger', '$routeParams', function ($q, $scope, $location, PageLifecycle, ServiceEntityLoader, OrgSvcs, Logger, $routeParams) {
-        var params = $routeParams;
-        $scope.organizationId = params.org;
-        $scope.tab = 'contracts';
-        $scope.version = params.version;
-        var getNextPage = function (successHandler, errorHandler) {
-            var maxCount = 10;
-            $scope.currentPage = $scope.currentPage + 1;
-            OrgSvcs.query({ organizationId: params.org, entityType: 'services', entityId: params.service, versionsOrActivity: 'versions', version: params.version, policiesOrActivity: 'contracts', page: $scope.currentPage, count: maxCount }, function (contracts) {
-                if (contracts.length == maxCount) {
-                    $scope.hasMore = true;
-                }
-                else {
-                    $scope.hasMore = false;
-                }
-                successHandler(contracts);
-            }, errorHandler);
-        };
-        var pageData = ServiceEntityLoader.getCommonData($scope, $location);
-        pageData = angular.extend(pageData, {
-            contracts: $q(function (resolve, reject) {
-                $scope.currentPage = 0;
-                getNextPage(resolve, reject);
-            })
-        });
-        $scope.getNextPage = getNextPage;
-        PageLifecycle.loadPage('ServiceContracts', pageData, $scope, function () {
-            Logger.debug("::: is public: {0}", $scope.version.publicService);
-            if ($scope.version.publicService) {
-                Logger.debug("::: num plans: {0}", $scope.version.plans.length);
-                if ($scope.version.plans.length == 0) {
-                    $scope.isPublicOnly = true;
-                }
-            }
-            PageLifecycle.setPageTitle('service-contracts', [$scope.service.name]);
-        });
-    }]);
-})(Apiman || (Apiman = {}));
-
-/// <reference path="../apimanPlugin.ts"/>
-/// <reference path="../services.ts"/>
-var Apiman;
-(function (Apiman) {
-    Apiman.ServiceEndpointController = Apiman._module.controller("Apiman.ServiceEndpointController", ['$q', '$scope', '$location', 'PageLifecycle', 'ServiceEntityLoader', 'OrgSvcs', 'ApimanSvcs', '$routeParams', function ($q, $scope, $location, PageLifecycle, ServiceEntityLoader, OrgSvcs, ApimanSvcs, $routeParams) {
-        var params = $routeParams;
-        $scope.organizationId = params.org;
-        $scope.tab = 'endpoint';
-        $scope.version = params.version;
-        var pageData = ServiceEntityLoader.getCommonData($scope, $location);
-        if (params.version != null) {
-            pageData = angular.extend(pageData, {
-                managedEndpoint: $q(function (resolve, reject) {
-                    OrgSvcs.get({ organizationId: params.org, entityType: 'services', entityId: params.service, versionsOrActivity: 'versions', version: params.version, policiesOrActivity: 'endpoint' }, resolve, reject);
-                })
-            });
-        }
-        PageLifecycle.loadPage('ServiceEndpoint', pageData, $scope, function () {
-            PageLifecycle.setPageTitle('service-endpoint', [$scope.service.name]);
-        });
-    }]);
-})(Apiman || (Apiman = {}));
-
-/// <reference path="../apimanPlugin.ts"/>
-/// <reference path="../services.ts"/>
-var Apiman;
-(function (Apiman) {
-    Apiman.ServiceImplController = Apiman._module.controller("Apiman.ServiceImplController", ['$q', '$scope', '$location', 'PageLifecycle', 'ServiceEntityLoader', 'OrgSvcs', 'ApimanSvcs', '$routeParams', 'EntityStatusService', function ($q, $scope, $location, PageLifecycle, ServiceEntityLoader, OrgSvcs, ApimanSvcs, $routeParams, EntityStatusService) {
-        var params = $routeParams;
-        $scope.organizationId = params.org;
-        $scope.tab = 'impl';
-        $scope.version = params.version;
-        $scope.typeOptions = ["rest", "soap"];
-        $scope.updatedService = new Object();
-        var pageData = ServiceEntityLoader.getCommonData($scope, $location);
-        if (params.version != null) {
-            pageData = angular.extend(pageData, {
-                gateways: $q(function (resolve, reject) {
-                    ApimanSvcs.query({ entityType: 'gateways' }, resolve, reject);
-                })
-            });
-        }
-        $scope.$watch('updatedService', function (newValue) {
-            if ($scope.version) {
-                var dirty = false;
-                if (newValue.endpoint != $scope.version.endpoint || newValue.endpointType != $scope.version.endpointType) {
-                    dirty = true;
-                }
-                else if (newValue.gateways && newValue.gateways.length > 0) {
-                    Logger.debug('Dirty because of gateways!');
-                    dirty = true;
-                }
-                $scope.isDirty = dirty;
-            }
-        }, true);
-        $scope.$watch('selectedGateway', function (newValue) {
-            Logger.info('New gateway selected: {0}', newValue);
-            var alreadySet = false;
-            if ($scope.version.gateways[0].gatewayId == newValue.id) {
-                alreadySet = true;
-            }
-            if (!alreadySet) {
-                $scope.updatedService.gateways = [{ gatewayId: newValue.id }];
-            }
-            else {
-                delete $scope.updatedService.gateways;
-            }
-        });
-        $scope.reset = function () {
-            $scope.updatedService.endpoint = $scope.version.endpoint;
-            $scope.updatedService.endpointType = $scope.version.endpointType;
-            delete $scope.updatedService.gateways;
-            angular.forEach($scope.gateways, function (gateway) {
-                // TODO support multiple gateway assignments here
-                if (gateway.id == $scope.version.gateways[0].gatewayId) {
-                    $scope.selectedGateway = gateway;
-                }
-            });
-            $scope.isDirty = false;
-        };
-        $scope.saveService = function () {
-            $scope.saveButton.state = 'in-progress';
-            OrgSvcs.update({ organizationId: params.org, entityType: 'services', entityId: params.service, versionsOrActivity: 'versions', version: params.version }, $scope.updatedService, function (reply) {
-                $scope.isDirty = false;
-                $scope.saveButton.state = 'complete';
-                $scope.version = reply;
-                EntityStatusService.setEntityStatus(reply.status);
-            }, PageLifecycle.handleError);
-        };
-        PageLifecycle.loadPage('ServiceImpl', pageData, $scope, function () {
-            $scope.reset();
-            PageLifecycle.setPageTitle('service-impl', [$scope.service.name]);
-        });
-    }]);
-})(Apiman || (Apiman = {}));
-
-/// <reference path="../apimanPlugin.ts"/>
-/// <reference path="../services.ts"/>
-var Apiman;
-(function (Apiman) {
-    Apiman.ServiceOverviewController = Apiman._module.controller("Apiman.ServiceOverviewController", ['$q', '$scope', '$location', 'PageLifecycle', 'ServiceEntityLoader', '$routeParams', function ($q, $scope, $location, PageLifecycle, ServiceEntityLoader, $routeParams) {
-        var params = $routeParams;
-        $scope.organizationId = params.org;
-        $scope.tab = 'overview';
-        $scope.version = params.version;
-        var pageData = ServiceEntityLoader.getCommonData($scope, $location);
-        PageLifecycle.loadPage('ServiceOverview', pageData, $scope, function () {
-            PageLifecycle.setPageTitle('service-overview', [$scope.service.name]);
-        });
-    }]);
-})(Apiman || (Apiman = {}));
-
-/// <reference path="../apimanPlugin.ts"/>
-/// <reference path="../services.ts"/>
-var Apiman;
-(function (Apiman) {
-    Apiman.ServicePlansController = Apiman._module.controller("Apiman.ServicePlansController", ['$q', '$scope', '$location', 'PageLifecycle', 'ServiceEntityLoader', 'OrgSvcs', 'ApimanSvcs', '$routeParams', 'EntityStatusService', function ($q, $scope, $location, PageLifecycle, ServiceEntityLoader, OrgSvcs, ApimanSvcs, $routeParams, EntityStatusService) {
-        var params = $routeParams;
-        $scope.organizationId = params.org;
-        $scope.tab = 'plans';
-        $scope.version = params.version;
-        $scope.updatedService = new Object();
-        var lockedPlans = [];
-        var getSelectedPlans = function () {
-            var selectedPlans = [];
-            for (var i = 0; i < lockedPlans.length; i++) {
-                var plan = lockedPlans[i];
-                if (plan.checked) {
-                    var selectedPlan = {};
-                    selectedPlan.planId = plan.id;
-                    selectedPlan.version = plan.selectedVersion;
-                    selectedPlans.push(selectedPlan);
-                }
-            }
-            return selectedPlans;
-        };
-        var pageData = ServiceEntityLoader.getCommonData($scope, $location);
-        if (params.version != null) {
-            pageData = angular.extend(pageData, {
-                plans: $q(function (resolve, reject) {
-                    OrgSvcs.query({ organizationId: params.org, entityType: 'plans' }, function (plans) {
-                        //for each plan find the versions that are locked
-                        var promises = [];
-                        angular.forEach(plans, function (plan) {
-                            promises.push($q(function (resolve, reject) {
-                                OrgSvcs.query({ organizationId: params.org, entityType: 'plans', entityId: plan.id, versionsOrActivity: 'versions' }, function (planVersions) {
-                                    //for each plan find the versions that are locked
-                                    var lockedVersions = [];
-                                    for (var j = 0; j < planVersions.length; j++) {
-                                        var planVersion = planVersions[j];
-                                        if (planVersion.status == "Locked") {
-                                            lockedVersions.push(planVersion.version);
-                                        }
-                                    }
-                                    // if we found locked plan versions then add them
-                                    if (lockedVersions.length > 0) {
-                                        plan.lockedVersions = lockedVersions;
-                                        lockedPlans.push(plan);
-                                    }
-                                    resolve(planVersions);
-                                }, reject);
-                            }));
-                        });
-                        $q.all(promises).then(function () {
-                            lockedPlans.sort(function (a, b) {
-                                if (a.id.toLowerCase() < b.id.toLowerCase()) {
-                                    return -1;
-                                }
-                                else if (b.id < a.id) {
-                                    return 1;
-                                }
-                                else {
-                                    return 0;
-                                }
-                            });
-                            resolve(lockedPlans);
-                        });
-                    }, reject);
-                })
-            });
-        }
-        $scope.$watch('updatedService', function (newValue) {
-            var dirty = false;
-            if (newValue.publicService != $scope.version.publicService) {
-                dirty = true;
-            }
-            if (newValue.plans.length != $scope.version.plans.length) {
-                dirty = true;
-            }
-            else {
-                for (var i = 0; i < newValue.plans.length; i++) {
-                    var p1 = newValue.plans[i];
-                    var p2 = $scope.version.plans[i];
-                    if (p1.planId != p2.planId || p1.version != p2.version) {
-                        dirty = true;
-                    }
-                }
-            }
-            $scope.isDirty = dirty;
-        }, true);
-        $scope.$watch('plans', function (newValue) {
-            $scope.updatedService.plans = getSelectedPlans();
-        }, true);
-        $scope.reset = function () {
-            $scope.updatedService.publicService = $scope.version.publicService;
-            for (var i = 0; i < lockedPlans.length; i++) {
-                lockedPlans[i].selectedVersion = lockedPlans[i].lockedVersions[0];
-                for (var j = 0; j < $scope.version.plans.length; j++) {
-                    if (lockedPlans[i].id == $scope.version.plans[j].planId) {
-                        lockedPlans[i].checked = true;
-                        lockedPlans[i].selectedVersion = $scope.version.plans[j].version;
-                        break;
-                    }
-                }
-            }
-            $scope.updatedService.plans = getSelectedPlans();
-            $scope.isDirty = false;
-        };
-        $scope.saveService = function () {
-            $scope.saveButton.state = 'in-progress';
-            OrgSvcs.update({ organizationId: params.org, entityType: 'services', entityId: params.service, versionsOrActivity: 'versions', version: params.version }, $scope.updatedService, function (reply) {
-                $scope.version.publicService = $scope.updatedService.publicService;
-                $scope.isDirty = false;
-                $scope.saveButton.state = 'complete';
-                $scope.version = reply;
-                EntityStatusService.setEntityStatus(reply.status);
-            }, PageLifecycle.handleError);
-        };
-        PageLifecycle.loadPage('ServicePlans', pageData, $scope, function () {
-            $scope.reset();
-            PageLifecycle.setPageTitle('service-plans', [$scope.service.name]);
-        });
-    }]);
-})(Apiman || (Apiman = {}));
-
-/// <reference path="../apimanPlugin.ts"/>
-/// <reference path="../services.ts"/>
-var Apiman;
-(function (Apiman) {
-    Apiman.ServicePoliciesController = Apiman._module.controller("Apiman.ServicePoliciesController", ['$q', '$scope', '$location', 'PageLifecycle', 'ServiceEntityLoader', 'OrgSvcs', 'Dialogs', '$routeParams', function ($q, $scope, $location, PageLifecycle, ServiceEntityLoader, OrgSvcs, Dialogs, $routeParams) {
-        var params = $routeParams;
-        $scope.organizationId = params.org;
-        $scope.tab = 'policies';
-        $scope.version = params.version;
-        var removePolicy = function (policy) {
-            angular.forEach($scope.policies, function (p, index) {
-                if (policy === p) {
-                    $scope.policies.splice(index, 1);
-                }
-            });
-        };
-        $scope.removePolicy = function (policy) {
-            Dialogs.confirm('Confirm Remove Policy', 'Do you really want to remove this policy from the service?', function () {
-                OrgSvcs.delete({ organizationId: params.org, entityType: 'services', entityId: params.service, versionsOrActivity: 'versions', version: params.version, policiesOrActivity: 'policies', policyId: policy.id }, function (reply) {
-                    removePolicy(policy);
-                }, PageLifecycle.handleError);
-            });
-        };
-        var pageData = ServiceEntityLoader.getCommonData($scope, $location);
-        pageData = angular.extend(pageData, {
-            policies: $q(function (resolve, reject) {
-                OrgSvcs.query({ organizationId: params.org, entityType: 'services', entityId: params.service, versionsOrActivity: 'versions', version: params.version, policiesOrActivity: 'policies' }, resolve, reject);
-            })
-        });
-        PageLifecycle.loadPage('ServicePolicies', pageData, $scope, function () {
-            PageLifecycle.setPageTitle('service-policies', [$scope.service.name]);
-        });
-    }]);
-})(Apiman || (Apiman = {}));
-
-/// <reference path="../apimanPlugin.ts"/>
-/// <reference path="../services.ts"/>
-var Apiman;
-(function (Apiman) {
-    Apiman.ServiceRedirectController = Apiman._module.controller("Apiman.ServiceRedirectController", ['$q', '$scope', '$location', 'OrgSvcs', 'PageLifecycle', '$rootScope', 'CurrentUser', '$routeParams', function ($q, $scope, $location, OrgSvcs, PageLifecycle, $rootScope, CurrentUser, $routeParams) {
-        var orgId = $routeParams.org;
-        var serviceId = $routeParams.service;
-        var pageData = {
-            versions: $q(function (resolve, reject) {
-                OrgSvcs.query({ organizationId: orgId, entityType: 'services', entityId: serviceId, versionsOrActivity: 'versions' }, resolve, reject);
-            })
-        };
-        PageLifecycle.loadPage('ServiceRedirect', pageData, $scope, function () {
-            var version = $scope.versions[0].version;
-            if (!version) {
-                PageLifecycle.handleError({ status: 404 });
-            }
-            else {
-                PageLifecycle.forwardTo('/orgs/{0}/services/{1}/{2}', orgId, serviceId, version);
-            }
-        });
-    }]);
-    Apiman.ServiceEntityLoader = Apiman._module.factory('ServiceEntityLoader', ['$q', 'OrgSvcs', 'Logger', '$rootScope', '$routeParams', 'EntityStatusService', function ($q, OrgSvcs, Logger, $rootScope, $routeParams, EntityStatusService) {
-        return {
-            getCommonData: function ($scope, $location) {
-                var params = $routeParams;
-                return {
-                    version: $q(function (resolve, reject) {
-                        OrgSvcs.get({ organizationId: params.org, entityType: 'services', entityId: params.service, versionsOrActivity: 'versions', version: params.version }, function (version) {
-                            $scope.org = version.service.organization;
-                            $scope.service = version.service;
-                            $rootScope.mruService = version;
-                            EntityStatusService.setEntityStatus(version.status);
-                            resolve(version);
-                        }, reject);
-                    }),
-                    versions: $q(function (resolve, reject) {
-                        OrgSvcs.query({ organizationId: params.org, entityType: 'services', entityId: params.service, versionsOrActivity: 'versions' }, resolve, reject);
-                    })
-                };
-            }
-        };
-    }]);
-    Apiman.ServiceEntityController = Apiman._module.controller("Apiman.ServiceEntityController", ['$q', '$scope', '$location', 'ActionSvcs', 'Logger', 'Dialogs', 'PageLifecycle', '$routeParams', 'OrgSvcs', 'EntityStatusService', function ($q, $scope, $location, ActionSvcs, Logger, Dialogs, PageLifecycle, $routeParams, OrgSvcs, EntityStatusService) {
-        var params = $routeParams;
-        $scope.params = params;
-        $scope.setEntityStatus = function (status) {
-            EntityStatusService.setEntityStatus(status);
-        };
-        $scope.getEntityStatus = function () {
-            return EntityStatusService.getEntityStatus();
-        };
-        $scope.setVersion = function (service) {
-            PageLifecycle.redirectTo('/orgs/{0}/services/{1}/{2}', params.org, params.service, service.version);
-        };
-        $scope.publishService = function () {
-            $scope.publishButton.state = 'in-progress';
-            var publishAction = {
-                type: 'publishService',
-                entityId: params.service,
-                organizationId: params.org,
-                entityVersion: params.version
-            };
-            ActionSvcs.save(publishAction, function (reply) {
-                $scope.version.status = 'Published';
-                $scope.publishButton.state = 'complete';
-                $scope.setEntityStatus($scope.version.status);
-            }, PageLifecycle.handleError);
-        };
-        $scope.retireService = function () {
-            $scope.retireButton.state = 'in-progress';
-            Dialogs.confirm('Confirm Retire Service', 'Do you really want to retire this service?  This action cannot be undone.', function () {
-                var retireAction = {
-                    type: 'retireService',
-                    entityId: params.service,
-                    organizationId: params.org,
-                    entityVersion: params.version
-                };
-                ActionSvcs.save(retireAction, function (reply) {
-                    $scope.version.status = 'Retired';
-                    $scope.retireButton.state = 'complete';
-                    $scope.setEntityStatus($scope.version.status);
-                }, PageLifecycle.handleError);
-            }, function () {
-                $scope.retireButton.state = 'complete';
-            });
-        };
-        $scope.updateServiceDescription = function (updatedDescription) {
-            var updateServiceBean = {
-                description: updatedDescription
-            };
-            OrgSvcs.update({
-                organizationId: $scope.organizationId,
-                entityType: 'services',
-                entityId: $scope.service.id,
-            }, updateServiceBean, function (success) {
-                Logger.info("Updated sucessfully");
-            }, function (error) {
-                Logger.error("Unable to update service description:  {0}", error);
-            });
-        };
-    }]);
-})(Apiman || (Apiman = {}));
-
 angular.module("apiman-manager-templates", []).run(["$templateCache", function($templateCache) {$templateCache.put("plugins/api-manager/html/dash.html","<!DOCTYPE html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"utf-8\">\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></meta>\r\n  </head>\r\n\r\n  <body>\r\n  <div>\r\n    <div ng-include=\"\'plugins/api-manager/html/progress.include\'\"></div>\r\n    <div id=\"apiman-header\" ng-include=\"\'plugins/api-manager/html/navbar.include\'\"></div>\r\n    <div ng-controller=\"Apiman.DashController\" class=\"page container\" data-field=\"page\" ng-cloak=\"\" ng-show=\"pageState == \'loaded\'\">\r\n      <div class=\"row\">\r\n        <div class=\"col-md-12\">\r\n          <h1 apiman-i18n-key=\"page-heading\">API Management</h1>\r\n          <hr />\r\n        </div>\r\n        <div class=\"col-md-12 no-phone\">\r\n          <span class=\"description\" apiman-i18n-key=\"dash.page-description\">\r\n            Welcome to apiman, open source API management.  Use this software to provide\r\n            various APIs (Services) to your users (Applications) through a secure, scalable,\r\n            and governed Gateway layer.  API Management allows Service Developers to centralize\r\n            control and analysis of their Services.  It also provides a central locaton for\r\n            Application Developers to find and consume available APIs.\r\n          </span>\r\n          <hr />\r\n        </div>\r\n      </div>\r\n      <div class=\"row\">\r\n        <div class=\"col-md-12\">\r\n        \r\n          <div class=\"dash-group\">\r\n            <div class=\"title\">\r\n              <i class=\"fa fa-shield\"></i>\r\n              <span apiman-i18n-key=\"organizations\">Organizations</span>\r\n            </div>\r\n            <div class=\"description\" apiman-i18n-key=\"dash.orgs-description\">\r\n              All services and applications must be managed within the context of an \r\n              Organization.  You can be a member of multiple Organizations at the same\r\n              time, with different roles in each:  you can be an Application\r\n              Developer in one organization and a Service Developer in another.\r\n            </div>\r\n            <div class=\"actions\">\r\n              <ul>\r\n                <li><a href=\"{{ pluginName }}/new-org\" apiman-i18n-key=\"actions.create-new-org\" data-field=\"createOrg\">Create a New Organization</a></li>\r\n                <li><a href=\"{{ pluginName }}/browse/orgs\" apiman-i18n-key=\"actions.browse-orgs\" data-field=\"browseOrgs\">Browse/Find an Organization</a></li>\r\n                <li><a href=\"{{ pluginName }}/users/{{ currentUser.username }}/orgs\" apiman-i18n-key=\"actions.my-orgs\" data-field=\"myOrgs\">Go to My Organizations</a></li>\r\n              </ul>\r\n            </div>\r\n          </div>\r\n          \r\n          <div class=\"dash-group pull-right\">\r\n            <div class=\"title\">\r\n              <i class=\"fa fa-puzzle-piece\"></i>\r\n              <span apiman-i18n-key=\"services\">Services</span>\r\n            </div>\r\n            <div class=\"description\" apiman-i18n-key=\"dash.services-description\">\r\n              Create, find, or manage Services.  A Service is also known as an API - anything\r\n              that can be invoked remotely by some sort of client (Application).  This platform\r\n              simply provides a way to expose existing APIs by defining them as Services and\r\n              attaching value-added policies to them.\r\n            </div>\r\n            <div class=\"actions\">\r\n              <ul>\r\n                <li><a href=\"{{ pluginName }}/browse/services\" apiman-i18n-key=\"actions.find-service\" data-field=\"browseServices\">Find/Consume a Service</a></li>\r\n                <li><a href=\"{{ pluginName }}/users/{{ currentUser.username }}/services\" apiman-i18n-key=\"actions.my-services\" data-field=\"myServices\">Manage My Services</a></li>\r\n                <li><a href=\"{{ pluginName }}/new-service\" apiman-i18n-key=\"actions.create-service\" data-field=\"createService\">Create a New Service</a></li>\r\n              </ul>\r\n            </div>\r\n          </div>\r\n\r\n          <div class=\"dash-group\">\r\n            <div class=\"title\">\r\n              <i class=\"fa fa-gears\"></i>\r\n              <span apiman-i18n-key=\"applications\">Applications</span>\r\n            </div>\r\n            <div class=\"description\" apiman-i18n-key=\"dash.applications-description\">\r\n              Create and manage your Applications.  An Application is the thing that consumes\r\n              APIs (Services).  These consumers must be defined in this platform so that \r\n              contracts can be created between them and the Services they wish to consume.\r\n            </div>\r\n            <div class=\"actions\">\r\n              <ul>\r\n                <li><a href=\"{{ pluginName }}/users/{{ currentUser.username }}/apps\" apiman-i18n-key=\"actions.my-apps\" data-field=\"myApps\">Manage My Applications</a></li>\r\n                <li><a href=\"{{ pluginName }}/new-app\" apiman-i18n-key=\"actions.new-app\" data-field=\"createApp\">Create a New Application</a></li>\r\n              </ul>\r\n            </div>\r\n          </div>\r\n\r\n          <div class=\"dash-group dash-admin-group pull-right\" data-field=\"adminDashPanel\" ng-show=\"isAdmin\">\r\n            <div class=\"title\">\r\n              <i class=\"fa fa-gavel\"></i>\r\n              <span apiman-i18n-key=\"system-administration\">System Administration</span>\r\n            </div>\r\n            <div class=\"description\" apiman-i18n-key=\"dash.system-description\">\r\n              Hey it looks like you\'re an administrator!  Here are some things only you can do.\r\n              These are system-wide settings you\'re thinking about modifying, so please proceed\r\n              with caution.\r\n            </div>\r\n            <div class=\"actions\">\r\n              <ul>\r\n                <li><a href=\"{{ pluginName }}/admin/roles\" apiman-i18n-key=\"actions.manage-roles\" data-field=\"manageRoles\">Manage Roles/Permissions</a></li>\r\n                <li><a href=\"{{ pluginName }}/admin/policyDefs\" apiman-i18n-key=\"actions.manage-policyDefs\" data-field=\"managePolicyDefs\">Manage Policy Definitions</a></li>\r\n                <li><a href=\"{{ pluginName }}/admin/gateways\" apiman-i18n-key=\"actions.manage-gateways\" data-field=\"manageGateways\">Manage Gateways</a></li>\r\n                <li><a href=\"{{ pluginName }}/admin/plugins\" apiman-i18n-key=\"actions.manage-plugins\" data-field=\"managePlugins\">Manage Plugins</a></li>\r\n              </ul>\r\n            </div>\r\n          </div>\r\n        </div>\r\n      </div>\r\n    </div> <!-- /container -->\r\n  </div>\r\n  </body>\r\n</html>\r\n");
 $templateCache.put("plugins/api-manager/html/profile.html","<!DOCTYPE html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"utf-8\">\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></meta>\r\n  </head>\r\n\r\n  <body>\r\n    <div ng-include=\"\'plugins/api-manager/html/progress.include\'\"></div>\r\n    <div id=\"apiman-header\" ng-include=\"\'plugins/api-manager/html/navbar.include\'\"></div>\r\n    <div ng-controller=\"Apiman.UserProfileController\" class=\"page container\" data-field=\"page\" ng-cloak=\"\" ng-show=\"pageState == \'loaded\'\">\r\n      <div class=\"row\">\r\n        <div class=\"col-md-12\">\r\n          <h1><i class=\"fa fa-user fa-fw\"></i> <span apiman-i18n-key=\"user-profile\">User Profile</span></h1>\r\n          <hr />\r\n        </div>\r\n      </div>\r\n      <div class=\"row settings\">\r\n        <div class=\"col-md-6\">\r\n          <div class=\"settings-detail\">\r\n            <form role=\"form\">\r\n              <div class=\"form-group\">\r\n                <label apiman-i18n-key=\"profile.username\" for=\"usernameInput\">Username</label>\r\n                <input ng-model=\"user.username\" type=\"text\" class=\"form-control\" id=\"apiman-username\" disabled=\"disabled\">\r\n              </div>\r\n              <div class=\"form-group\">\r\n                <label apiman-i18n-key=\"profile.full-name\" for=\"nameInput\">Full Name</label>\r\n                <input ng-model=\"updatedUser.fullName\" type=\"text\" class=\"form-control\" id=\"apiman-name\" apiman-i18n-key=\"profile.enter-full-name\" placeholder=\"Enter your full name...\">\r\n              </div>\r\n              <div class=\"form-group\">\r\n                <label apiman-i18n-key=\"profile.email\" for=\"emailInput\">Email</label>\r\n                <input ng-model=\"updatedUser.email\" type=\"email\" class=\"form-control\" id=\"apiman-email\" apiman-i18n-key=\"profile.enter-email\" placeholder=\"Email address...\">\r\n              </div>\r\n              <button ng-disabled=\"!isDirty || !isValid\" apiman-action-btn=\"\" class=\"btn btn-primary\" data-field=\"updateButton\" apiman-i18n-key=\"update-profile\" placeholder=\"Updating...\" data-icon=\"fa-cog\" ng-click=\"save()\">Update Profile</button>\r\n              <a href=\"javascript:window.history.back()\" class=\"btn btn-default btn-cancel\" apiman-i18n-key=\"cancel\">Cancel</a>\r\n            </form>\r\n          </div>\r\n        </div>\r\n      </div>\r\n    </div> <!-- /container -->\r\n  </body>\r\n</html>\r\n");
 $templateCache.put("plugins/api-manager/html/admin/admin-gateways.html","<!DOCTYPE html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"utf-8\">\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></meta>\r\n    \r\n  </head>\r\n\r\n  <body>\r\n  <div>\r\n    <div ng-include=\"\'plugins/api-manager/html/progress.include\'\"></div>\r\n    <div id=\"apiman-header\" ng-include=\"\'plugins/api-manager/html/navbar.include\'\"></div>   \r\n    <div ng-controller=\"Apiman.AdminGatewaysController\" class=\"page container admin-page\" data-field=\"page\" ng-cloak=\"\" ng-show=\"pageState == \'loaded\'\">\r\n      <div class=\"row\">\r\n        <div class=\"col-md-12\">\r\n          <div ng-include=\"\'plugins/api-manager/html/admin/admin_bc.include\'\"></div>\r\n        </div>\r\n      </div>\r\n      <div class=\"row\">\r\n        <!-- Side Navigation -->\r\n        <div class=\"col-md-3\">\r\n          <div ng-include=\"\'plugins/api-manager/html/admin/admin_tabs.include\'\"></div>\r\n        </div>\r\n        <!-- Admin Content -->\r\n        <div class=\"col-md-9 admin-content\">\r\n          <div class=\"container-fluid\">\r\n            <div class=\"row\">\r\n              <h2 class=\"title\" data-field=\"heading\" apiman-i18n-key=\"gateways\">Gateways</h2>\r\n            </div>\r\n            <!-- Helpful hint -->\r\n            <div class=\"row\">\r\n              <p class=\"col-md-10 apiman-label-faded\" apiman-i18n-key=\"gateways-help-text\" class=\"apiman-label-faded\">Configure the gateways on which the services may be published.  If no gateways are configured, then users will not be able to publish their services!</p>\r\n            </div>\r\n            <!-- HR -->\r\n            <div class=\"row hr-row\">\r\n              <hr/>\r\n            </div>\r\n            <!-- Filter and Actions -->\r\n            <div class=\"row\">\r\n              <div class=\"apiman-filters apiman-gateways-filters\">\r\n                <a apiman-i18n-key=\"new-gateway\" data-field=\"toNewGateway\" href=\"{{pluginName }}/new-gateway\" class=\"btn btn-primary pull-right\">New Gateway</a>\r\n              </div>\r\n            </div>\r\n            <!-- Table of Gateways -->\r\n            <div class=\"row\">\r\n              <div class=\"table-responsive\">\r\n                <table class=\"table table-striped table-bordered table-hover\" data-field=\"gateways\">\r\n                  <thead>\r\n                    <tr>\r\n                      <th apiman-i18n-key=\"name\">Name</th>\r\n                      <th apiman-i18n-key=\"type\">Configuration Type</th>\r\n                    </tr>\r\n                  </thead>\r\n                  <tbody>\r\n                    <tr ng-hide=\"gateways.length > 0\">\r\n                      <td colspan=\"2\">\r\n                        <div class=\"apiman-no-content\">\r\n                          <p class=\"apiman-no-entities-description\" apiman-i18n-key=\"no-gateways-found\">No gateways have been added! Try adding a Gateway by clicking \'New Gateway\' above - you\'ll need at least one, otherwise users will not be able to publish their Services.</p>\r\n                        </div>\r\n                      </td>\r\n                    </tr>\r\n                    <tr ng-repeat=\"gateway in gateways\">\r\n                      <td><a href=\"{{ pluginName}}/admin/gateways/{{ gateway.id }}\"><span>{{ gateway.name}}</span></a></td>\r\n                      <td>{{ gateway.type}}</td>\r\n                    </tr>\r\n                  </tbody>\r\n                </table>\r\n              </div>\r\n            </div>\r\n          </div>\r\n        </div>\r\n      </div>\r\n    </div>\r\n  </div>\r\n  </body>\r\n</html>\r\n");
 $templateCache.put("plugins/api-manager/html/admin/admin-plugins.html","<!DOCTYPE html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"utf-8\">\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></meta>\r\n  </head>\r\n\r\n  <body>\r\n  <div>\r\n    <div ng-include=\"\'plugins/api-manager/html/progress.include\'\"></div>\r\n    <div id=\"apiman-header\" ng-include=\"\'plugins/api-manager/html/navbar.include\'\"></div>   \r\n    <div ng-controller=\"Apiman.AdminPluginsController\" class=\"page container admin-page\" data-field=\"page\" ng-cloak=\"\" ng-show=\"pageState == \'loaded\'\">\r\n      <div class=\"row\">\r\n        <div class=\"col-md-12\">\r\n          <div ng-include=\"\'plugins/api-manager/html/admin/admin_bc.include\'\"></div>\r\n        </div>\r\n      </div>\r\n      <div class=\"row\">\r\n        <!-- Side Navigation -->\r\n        <div class=\"col-md-3\">\r\n          <div ng-include=\"\'plugins/api-manager/html/admin/admin_tabs.include\'\"></div>\r\n        </div>\r\n        <!-- Admin Content -->\r\n        <div class=\"col-md-9 admin-content\">\r\n          <div class=\"container-fluid\">\r\n            <div class=\"row\">\r\n              <h2 class=\"title\" data-field=\"heading\" apiman-i18n-key=\"plugins\">Plugins</h2>\r\n            </div>\r\n            <!-- Helpful hint -->\r\n            <div class=\"row\">\r\n              <p class=\"col-md-10 apiman-label-faded\" apiman-i18n-key=\"plugins-help-text\" class=\"apiman-label-faded\">Manage the plugins known to this installation of apiman.  Plugins allow additional functionality to be included in the system after it has been installed and configured.</p>\r\n            </div>\r\n            <!-- HR -->\r\n            <div class=\"row hr-row\">\r\n              <hr/>\r\n            </div>\r\n            <!-- Filter and Actions -->\r\n            <div class=\"row\">\r\n              <div class=\"apiman-filters apiman-plugins-filters\">\r\n                <a apiman-i18n-key=\"add-plugin\" data-field=\"toNewPlugin\" href=\"{{ pluginName }}/new-plugin\" class=\"btn btn-primary pull-right\">Add Plugin</a>\r\n              </div>\r\n            </div>\r\n            <!-- Table of Plugins -->\r\n            <div class=\"row\">\r\n              <div class=\"table-responsive\">\r\n                <table class=\"table table-striped table-bordered table-hover\" data-field=\"plugins\">\r\n                  <thead>\r\n                    <tr>\r\n                      <th apiman-i18n-key=\"name\">Name</th>\r\n                      <th apiman-i18n-key=\"coordinates\">Coordinates</th>\r\n                    </tr>\r\n                  </thead>\r\n                  <tbody >\r\n                    <tr ng-hide=\"plugins.length > 0\">\r\n                      <td colspan=\"2\">\r\n                        <div class=\"apiman-no-content container-fluid\">\r\n                          <div class=\"row\">\r\n                            <div class=\"col-md-12\">\r\n                              <p class=\"apiman-no-entities-description\" apiman-i18n-key=\"no-plugins-found\">No plugins have been added! Try adding some plugins by clicking Add Plugin above.</p>\r\n                            </div>\r\n                          </div>\r\n                        </div>\r\n                      </td>\r\n                    </tr>\r\n                    <tr ng-repeat=\"plugin in plugins\">\r\n                      <td>{{ plugin.name }}</td>\r\n                      <td><a href=\"{{ pluginName }}/admin/plugins/{{ plugin.id }}\"><span>{{ plugin.groupId }}:{{ plugin.artifactId }}:{{ plugin.version}}:{{ plugin.type }}</span></a></td>\r\n                    </tr>\r\n                  </tbody>\r\n                </table>\r\n              </div>\r\n            </div>\r\n          </div>\r\n        </div>\r\n      </div>\r\n    </div>\r\n  </div>\r\n  </body>\r\n</html>\r\n");
 $templateCache.put("plugins/api-manager/html/admin/admin-policyDefs.html","<!DOCTYPE html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"utf-8\">\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></meta>\r\n  </head>\r\n\r\n  <body>\r\n  <div>\r\n    <div ng-include=\"\'plugins/api-manager/html/progress.include\'\"></div>\r\n    <div id=\"apiman-header\" ng-include=\"\'plugins/api-manager/html/navbar.include\'\"></div>   \r\n    <div ng-controller=\"Apiman.AdminPolicyDefsController\" class=\"page container admin-page\" data-field=\"page\" ng-cloak=\"\" ng-show=\"pageState == \'loaded\'\">\r\n      <div class=\"row\">\r\n        <div class=\"col-md-12\">\r\n          <div ng-include=\"\'plugins/api-manager/html/admin/admin_bc.include\'\"></div>\r\n        </div>\r\n      </div>\r\n      <div class=\"row\">\r\n        <!-- Side Navigation -->\r\n        <div class=\"col-md-3\">\r\n          <div ng-include=\"\'plugins/api-manager/html/admin/admin_tabs.include\'\"></div>\r\n        </div>\r\n        <!-- Admin Content -->\r\n        <div class=\"col-md-9 admin-content\">\r\n          <div class=\"container-fluid\">\r\n            <div class=\"row\">\r\n              <h2 class=\"title\" data-field=\"heading\" apiman-i18n-key=\"policy-definitions\">Policy Definitions</h2>\r\n            </div>\r\n            <!-- Helpful hint -->\r\n            <div class=\"row\">\r\n              <p class=\"col-md-10 apiman-label-faded\" apiman-i18n-key=\"policy-definitions-help-text\" class=\"apiman-label-faded\">Configure the available policy definitions.  These will be the policies made available to users when configuring applications, services, and plans.</p>\r\n            </div>\r\n            <!-- HR -->\r\n            <div class=\"row hr-row\">\r\n              <hr/>\r\n            </div>\r\n            <!-- Filter and Actions -->\r\n            <div class=\"row\">\r\n              <div class=\"apiman-filters apiman-policyDefs-filters\">\r\n                <div>\r\n                  <apiman-search-box apiman-i18n-key=\"filter-policies\" function=\"filterPolicies\" placeholder=\"Filter by policy name...\" />\r\n                </div>\r\n                </table>\r\n                <a apiman-i18n-key=\"import-policy\" href=\"{{ pluginName }}/import-policyDefs\" class=\"btn btn-primary pull-right\">Import Policy</a>\r\n              </div>\r\n            </div>\r\n            <!-- Table of Policy Definitions -->\r\n            <div class=\"row\">\r\n\r\n              <div ng-hide=\"policyDefs.length > 0\">\r\n                <div class=\"apiman-no-content container-fluid\">\r\n                  <div class=\"row\">\r\n                    <div class=\"col-md-12\">\r\n                      <p class=\"apiman-no-entities-description\" apiman-i18n-key=\"no-policy-defs-found\">No policy definitions have been added!  Without at least one policy definition users will not be able to add policies to their Services, Plans, and Applications.</p>\r\n                    </div>\r\n                  </div>\r\n                </div>\r\n              </div>\r\n\r\n              <div ng-show=\"policyDefs.length > 0 && filteredPolicyDefs.length == 0\">\r\n                <div class=\"apiman-no-content container-fluid\">\r\n                  <div class=\"row\">\r\n                    <div class=\"col-md-12\">\r\n                      <p class=\"apiman-no-entities-description\" apiman-i18n-key=\"no-policy-defs-for-filter\">No policy definitions matched your filter criteria.  Try something different!</p>\r\n                    </div>\r\n                  </div>\r\n                </div>\r\n              </div>\r\n\r\n              <div class=\"apiman-summaryrow\" ng-repeat=\"policyDef in filteredPolicyDefs\">\r\n                <a href=\"{{ pluginName }}/admin/policyDefs/{{policyDef.id}}\"><i style=\"font-size: 18px; margin-top: 2px\" class=\"fa fa-{{ policyDef.icon}} fa-fw\"></i><span>{{ policyDef.name }}</span></a>\r\n                <div style=\"padding-left: 24px\">\r\n	                <div class=\"description apiman-label-faded\">{{ policyDef.description}}</div>\r\n	                <div>\r\n	                  <div class=\"emphasis\" apiman-i18n-key=\"implementation\">Implementation:</div>\r\n	                  <div>{{ policyDef.policyImpl}}</div\r\n	                </div>\r\n                </div>\r\n                <hr/>\r\n              </div>\r\n              \r\n            </div>\r\n          </div>\r\n        </div>\r\n      </div>\r\n    </div>\r\n  </div>\r\n  </body>\r\n</html>\r\n");
 $templateCache.put("plugins/api-manager/html/admin/admin-roles.html","<!DOCTYPE html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"utf-8\">\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></meta>\r\n  </head>\r\n\r\n  <body>\r\n  <div>\r\n    <div ng-include=\"\'plugins/api-manager/html/progress.include\'\"></div>\r\n    <div id=\"apiman-header\" ng-include=\"\'plugins/api-manager/html/navbar.include\'\"></div>   \r\n    <div ng-controller=\"Apiman.AdminRolesController\" class=\"page container admin-page\" data-field=\"page\" ng-cloak=\"\" ng-show=\"pageState == \'loaded\'\">\r\n      <div class=\"row\">\r\n        <div class=\"col-md-12\">\r\n          <div ng-include=\"\'plugins/api-manager/html/admin/admin_bc.include\'\"></div>\r\n        </div>\r\n      </div>\r\n      <div class=\"row\">\r\n        <!-- Side Navigation -->\r\n        <div class=\"col-md-3\">\r\n          <div ng-include=\"\'plugins/api-manager/html/admin/admin_tabs.include\'\"></div>\r\n        </div>\r\n        <!-- Admin Content -->\r\n        <div class=\"col-md-9 admin-content\">\r\n          <div class=\"container-fluid\">\r\n            <div class=\"row\">\r\n              <h2 class=\"title\" apiman-i18n-key=\"role-management\" apiman-i18n-key=\"role-management\">Role Management</h2>\r\n            </div>\r\n            <!-- Helpful hint -->\r\n            <div class=\"row\">\r\n              <p class=\"col-md-10 apiman-label-faded\" apiman-i18n-key=\"role-management-help-text\" class=\"apiman-label-faded\">Create and modify roles that users can be granted membership in for any organization.  Each role grants the user a set of permissions, allowing her to do specific things within the organization.</p>\r\n            </div>\r\n            <!-- HR -->\r\n            <div class=\"row hr-row\">\r\n              <hr/>\r\n            </div>\r\n            <!-- Filter and Actions -->\r\n            <div class=\"row\">\r\n              <div class=\"apiman-filters apiman-roles-filters\">\r\n                <div>\r\n                  <apiman-search-box apiman-i18n-key=\"filter-roles\" function=\"filterRoles\" placeholder=\"Filter by role name...\" />\r\n                </div>\r\n                <a apiman-i18n-key=\"new-role\" href=\"{{ pluginName }}/new-role\" class=\"btn btn-primary pull-right\">New Role</a>\r\n              </div>\r\n            </div>\r\n            <!-- The Roles -->\r\n            <div class=\"row\">\r\n              <div class=\"apiman-roles\">\r\n\r\n                  <div class=\"apiman-no-content container-fluid\" ng-hide=\"roles.length > 0\">\r\n                    <div class=\"row\">\r\n                      <div class=\"col-md-8\">\r\n                        <p class=\"apiman-no-entities-description\" apiman-i18n-key=\"no-roles-found\">No roles have been created.  Until at least one \"auto-grant\" role is created, users will not be able to use apiman.</p>\r\n                      </div>\r\n                    </div>\r\n                  </div>\r\n\r\n                  <div class=\"apiman-no-content container-fluid\" ng-show=\"roles.length > 0 && filteredRoles.length == 0\">\r\n                    <div class=\"row\">\r\n                      <div class=\"col-md-12\">\r\n                        <p class=\"apiman-no-entities-description\" apiman-i18n-key=\"no-roles-found-for-filter\">No roles found matching your filter criteria - please try searching for something different.</p>\r\n                      </div>\r\n                    </div>\r\n                  </div>\r\n\r\n                  <div class=\"container-fluid apiman-summaryrow\" ng-repeat=\"role in filteredRoles\">\r\n                    <div class=\"row\">\r\n                      <span class=\"title\"><a href=\"{{ pluginName }}/admin/roles/{{ role.id }}\">{{ role.name }}</a></span>\r\n                      \r\n                      <a ng-show=\"role.autoGrant\" class=\"apiman-summaryrow-icon\">\r\n                        <i class=\"fa fa-check fa-fw\"></i>\r\n                        <span class=\"title-summary-item\" apiman-i18n-key=\"auto-grant-to-creator\">Auto-granted to org creator</span>\r\n                      </a>\r\n                    </div>\r\n                    <div class=\"row\" style=\"margin-bottom: 8px;\">\r\n                      <span class=\"description apiman-label-faded\">\r\n                        {{ role.description }}\r\n                      </span>\r\n                    </div>\r\n                    <div class=\"row\">\r\n                      <div class=\"permissions\">\r\n                        <span class=\"emphasis\" apiman-i18n-key=\"grants-permissions\">Grants Permissions:</span>\r\n                        <span class=\"description\" ng-repeat=\"permission in role.permissions\">\r\n                        	{{ permission }}{{$last ? \'\' : \', \'}}\r\n                        </span>\r\n                      </div>\r\n                    </div>\r\n                    <hr/>\r\n                  </div>\r\n                </div>\r\n            </div>\r\n          </div>\r\n        </div>\r\n      </div>\r\n    </div>\r\n  </div>\r\n  </body>\r\n</html>\r\n");
-$templateCache.put("plugins/api-manager/html/consumer/consumer-org.html","<!DOCTYPE html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"utf-8\">\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></meta>\r\n    \r\n  </head>\r\n\r\n  <body>\r\n  <div>\r\n    <div ng-include=\"\'plugins/api-manager/html/progress.include\'\"></div>\r\n    <div id=\"apiman-header\" ng-include=\"\'plugins/api-manager/html/navbar.include\'\"></div>   \r\n    <div ng-controller=\"Apiman.ConsumerOrgController\" class=\"page container\" data-field=\"page\" ng-cloak=\"\" ng-show=\"pageState == \'loaded\'\">\r\n      <div class=\"row\">\r\n        <div class=\"col-md-12\">\r\n          <ol class=\"breadcrumb\" data-field=\"breadcrumb\">\r\n            <li><a href=\"{{ pluginName }}/dash\"><i class=\"fa fa-home fa-fw\"></i><span apiman-i18n-key=\"home\">Home</span></a></li>\r\n            <li><a href=\"{{ pluginName }}/browse/orgs\"><i class=\"fa fa-search fa-fw\"></i><span apiman-i18n-key=\"organizations\">Organizations</span></a></li>\r\n            <li class=\"active\"><span><i class=\"fa fa-shield fa-fw\"></i><span>{{ org.name }}</span></span></li>\r\n          </ol>\r\n        </div>\r\n      </div>\r\n      <div class=\"row\">\r\n        <div class=\"col-md-12\">\r\n          <h1 class=\"consumer-top-header\" apiman-i18n-key=\"organization-details\">Organization Details</h1>\r\n        </div>\r\n        <div class=\"col-md-12\">\r\n          <div class=\"vspacer-10\" />\r\n        </div>\r\n      </div>\r\n      \r\n      <div class=\"row\">\r\n\r\n        <!-- Left column -->\r\n        <div class=\"col-md-4 browse-items\">\r\n          <div class=\"item\" style=\"width: 100%; margin-bottom: 20px;\" data-field=\"organizationCard\">\r\n            <div class=\"title\"><i class=\"fa fa-shield icon\"></i><span data-field=\"title\">{{ org.name }}</span></div>\r\n            <div class=\"description\" data-field=\"description\">{{ org.description }}</div>\r\n            <div class=\"actions\" style=\"display:none\">\r\n              <button class=\"btn btn-default\" style=\"display:none\" data-field=\"requestMembership\" apiman-i18n-key=\"request-membership\">Request Membership</button>\r\n            </div>\r\n            <a ng-show=\"org.isMember\" class=\"ismember\" title=\"You are already a member of this Organization.\" href=\"{{ pluginName }}/orgs/{{ org.id }}\" data-field=\"isMemberLink\" apiman-i18n-key=\"is-member\"></a>\r\n          </div>\r\n          \r\n          <div class=\"consumer-section\">\r\n            <h3 apiman-i18n-key=\"current-members\" class=\"consumer-header\">Current Members</h3>\r\n            <div class=\"apiman-members\" data-field=\"members\">\r\n              <div class=\"container-fluid apiman-summaryrow\" ng-repeat=\"member in members\">\r\n                <div class=\"row\">\r\n                  <span class=\"title\">\r\n                    <i class=\"fa fa-fw fa-user icon\"></i>\r\n                    <a href=\"{{ pluginName }}/users/{{ member.userId }}/orgs\">{{ member.userName }}</a>\r\n                    <span class=\"secondary\">({{ member.userId }})</span>\r\n                  </span>\r\n                </div>\r\n              </div>\r\n            </div>\r\n          </div>\r\n        </div>\r\n        <!-- Right column -->\r\n        <div class=\"col-md-8\">\r\n          <div class=\"consumer-section\">\r\n            <h3 apiman-i18n-key=\"services-offered\" class=\"consumer-header\">Services Offered</h3>\r\n            <div class=\"apiman-filters apiman-services-filters\">\r\n              <apiman-search-box apiman-i18n-key=\"filter-consumer-services\" function=\"filterServices\" placeholder=\"Filter by service name...\" />\r\n            </div>\r\n            <div class=\"apiman-services consumer-section\" data-field=\"services\">\r\n\r\n              <div class=\"apiman-no-content\" ng-hide=\"services.length > 0\">\r\n                <p class=\"apiman-no-entities-description\" apiman-i18n-key=\"consumer-no-services-found-for-org\">No services are currently offered by this organization.</p>\r\n              </div>\r\n\r\n              <div class=\"apiman-no-content\" ng-show=\"services.length > 0 && filteredServices.length == 0\">\r\n                <p class=\"apiman-no-entities-description\" apiman-i18n-key=\"consumer-no-services-found-for-filter\">No services matched the current filter criteria.</p>\r\n              </div>\r\n\r\n              <div class=\"container-fluid apiman-summaryrow\" ng-repeat=\"service in filteredServices\">\r\n                <div class=\"row\">\r\n                  <i class=\"fa fa-fw fa-puzzle-piece icon\"></i>\r\n                  <span class=\"title\"><a href=\"{{ pluginName }}/browse/orgs/{{ org.id }}/{{ service.id }}\">{{ service.name }}</a></span>\r\n                </div>\r\n                <div class=\"row\">\r\n                  <span class=\"description\">\r\n                    {{ service.description }}\r\n                  </span>\r\n                </div>\r\n                <hr/>\r\n              </div>\r\n            </div>\r\n          </div>\r\n        </div>\r\n\r\n      </div>\r\n    </div> <!-- /container -->\r\n  </div>\r\n  </body>\r\n</html>\r\n");
-$templateCache.put("plugins/api-manager/html/consumer/consumer-orgs.html","<!DOCTYPE html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"utf-8\">\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></meta>\r\n  </head>\r\n\r\n  <body>\r\n  <div>\r\n    <div ng-include=\"\'plugins/api-manager/html/progress.include\'\"></div>\r\n    <div id=\"apiman-header\" ng-include=\"\'plugins/api-manager/html/navbar.include\'\"></div>   \r\n    <div ng-controller=\"Apiman.ConsumerOrgsController\" class=\"page container\" data-field=\"page\" ng-cloak=\"\" ng-show=\"pageState == \'loaded\'\">\r\n      <div class=\"row\">\r\n        <div class=\"col-md-12\">\r\n          <ol class=\"breadcrumb\" data-field=\"breadcrumb\">\r\n            <li><a href=\"{{ pluginName }}/dash\"><i class=\"fa fa-home fa-fw\"></i><span apiman-i18n-key=\"home\">Home</span></a></li>\r\n            <li class=\"active\"><i class=\"fa fa-search fa-fw\"></i><span apiman-i18n-key=\"organizations\">Organizations</span></li>\r\n          </ol>\r\n        </div>\r\n      </div>\r\n      <div class=\"row\">\r\n        <div class=\"col-md-12\">\r\n          <h1 class=\"consumer-top-header\" apiman-i18n-key=\"find-org\">Find an Organization</h1>\r\n        </div>\r\n        <div class=\"col-md-6 no-phone\">\r\n          <p class=\"description\" apiman-i18n-key=\"find-org-description\">Use this page to find Organizations you may wish to join. Use this page to find Organizations you may wish to join. Use this page to find Organizations you may wish to join.</p>\r\n        </div>\r\n        <div class=\"col-md-6\">\r\n          <form ng-submit=\"searchOrg(orgName)\">\r\n            <input id=\"apiman-search\" ng-model=\"orgName\" type=\"text\" class=\"form-control input-search\" apiman-i18n-key=\"searchfor-orgs\" placeholder=\"Enter a word or phrase to search by...\"></input>\r\n            <button type=\"submit\" class=\"btn btn-default btn-search\" apiman-i18n-key=\"search\" data-field=\"searchButton\"\">Search</input>\r\n          </form>\r\n        </div>\r\n        <div class=\"col-md-12\">\r\n          <hr />\r\n        </div>\r\n      </div>\r\n      \r\n      <!-- Search results -->\r\n      <div class=\"row browse-items\">\r\n        <div class=\"col-md-12\" data-field=\"orgs\">\r\n\r\n          <div class=\"apiman-no-content container-fluid\" ng-hide=\"orgs.length > 0\">\r\n            <div class=\"row\">\r\n              <div class=\"col-md-9\">\r\n                <p apiman-i18n-key=\"consumer-no-orgs-found\" class=\"apiman-no-entities-description\">No organizations found. Either no organizations matched the query or you haven\'t queried yet!</p>\r\n              </div>\r\n              <div class=\"col-md-3\"></div>\r\n            </div>\r\n          </div>\r\n\r\n          <div ng-show=\"orgs.length > 0\">\r\n	        <div class=\"count\">\r\n	          Found {{ orgs.length }} matching organizations.\r\n	        </div>\r\n	        <div class=\"item\" ng-repeat=\"org in orgs\">\r\n	          <div class=\"title\"><i class=\"fa fa-shield icon\"></i><a href=\"{{ pluginName }}/browse/orgs/{{ org.id }}\">{{ org.name }}</a></div>\r\n	          <div class=\"description\" title=\"{{ org.description }}\">{{ org.description }}</div>\r\n<!-- 	          <div class=\"actions\"> -->\r\n<!-- 	            <button class=\"btn btn-default\">Request Membership</button> -->\r\n<!-- 	          </div> -->\r\n	          <a apiman-i18n-key=\"is-member-badge\" ng-show=\"org.isMember\" href=\"{{ pluginName }}/orgs/{{ org.id }}\" class=\"ismember\" title=\"You are already a member of this Organization.\"></a>\r\n	        </div>\r\n          </div>\r\n        </div>\r\n      </div>\r\n      \r\n    </div> <!-- /container -->\r\n  </div>\r\n  </body>\r\n</html>\r\n");
-$templateCache.put("plugins/api-manager/html/consumer/consumer-service-redirect.html","<!DOCTYPE html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"utf-8\">\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></meta>\r\n  </head>\r\n\r\n  <body>\r\n  <div>\r\n    <div ng-include=\"\'plugins/api-manager/html/progress.include\'\"></div>\r\n    <div id=\"apiman-header\" ng-include=\"\'plugins/api-manager/html/navbar.include\'\"></div>   \r\n    <div ng-controller=\"Apiman.ConsumerServiceRedirectController\" class=\"page container\" data-field=\"page\" ng-cloak=\"\" ng-show=\"pageState == \'loaded\'\">\r\n    </div> <!-- /container -->\r\n  </div>\r\n  </body>\r\n</html>\r\n");
-$templateCache.put("plugins/api-manager/html/consumer/consumer-service.html","<!DOCTYPE html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"utf-8\">\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></meta>\r\n    \r\n  </head>\r\n\r\n  <body>\r\n  <div>\r\n    <div ng-include=\"\'plugins/api-manager/html/progress.include\'\"></div>\r\n    <div id=\"apiman-header\" ng-include=\"\'plugins/api-manager/html/navbar.include\'\"></div>   \r\n    <div ng-controller=\"Apiman.ConsumerSvcController\" class=\"page container\" data-field=\"page\" ng-cloak=\"\" ng-show=\"pageState == \'loaded\'\">\r\n      <div class=\"row\">\r\n        <div class=\"col-md-12\">\r\n          <ol class=\"breadcrumb\" data-field=\"breadcrumb\">\r\n            <li><a href=\"{{ pluginName }}/dash\"><i class=\"fa fa-home fa-fw\"></i><span apiman-i18n-key=\"home\">Home</span></a></li>\r\n            <li><a href=\"{{ pluginName }}/browse/services\"><i class=\"fa fa-search fa-fw\"></i><span apiman-i18n-key=\"services\">Services</span></a></li>\r\n            <li class=\"active\"><i class=\"fa fa-puzzle-piece fa-fw\"></i><span>{{ service.name }}</span></li>\r\n          </ol>\r\n        </div>\r\n      </div>\r\n      <div class=\"row\">\r\n        <div class=\"col-md-12\">\r\n          <h1 class=\"consumer-top-header\" apiman-i18n-key=\"service-details\">Service Details</h1>\r\n        </div>\r\n        <div class=\"col-md-12\">\r\n          <div class=\"vspacer-10\" />\r\n        </div>\r\n      </div>\r\n      <div class=\"row\">\r\n\r\n        <!-- Left column -->\r\n        <div class=\"col-md-4 browse-items\">\r\n          <div class=\"item\" style=\"width: 100%; margin-bottom: 20px;\" data-field=\"serviceCard\">\r\n            <div class=\"title\">\r\n              <i class=\"fa fa-puzzle-piece icon\"></i><a href=\"{{ pluginName }}/browse/orgs/{{ service.organization.id }}\" data-field=\"titleOrg\">{{ service.organization.name }}</a>\r\n              <span apiman-i18n-skip> / </span>\r\n              <span class=\"emphasis\" data-field=\"titleService\">{{ service.name }}</span>\r\n            </div>\r\n            <div class=\"description\" data-field=\"description\" style=\"margin-bottom: 10px;\">{{ service.description }}</div>\r\n            <span class=\"form-label\" apiman-i18n-key=\"choose-version\">Choose Version:</span>\r\n            <div class=\"btn-group apiman-entity-action\" ng-show=\"versions.length > 0\">\r\n              <select apiman-select-picker=\"\" ng-model=\"selectedServiceVersion\" ng-change=\"setVersion( selectedServiceVersion )\" \r\n                title=\"\" class=\"selectpicker\" data-live-search=\"false\" apiman-i18n-skip\r\n                data-field=\"versionSelector\" data-ng-options=\"version as version.version for version in versions\">\r\n              </select>\r\n            </div>\r\n            <div apiman-i18n-key=\"no-published-service-versions-found\" class=\"apiman-label-faded\" ng-hide=\"versions.length > 0\">\r\n              No versions of this service have been published.  You will not be able to\r\n              consume this service until it has been published by its owner!\r\n            </div>\r\n          </div>\r\n        </div>\r\n        \r\n        <!-- Right column -->\r\n        <div class=\"col-md-8\">\r\n          <div class=\"consumer-section\">\r\n            <div id=\"managed-endpoint-wrap\" ng-show=\"version.publicService\">\r\n              <h3 apiman-i18n-key=\"public-endpoint\" class=\"consumer-header\">Public Endpoint</h3>\r\n              <p class=\"apiman-label-faded\" apiman-i18n-key=\"consumer-service.public-service-warning\">\r\n                Because this is a Public Service, it is possible to invoke it directly, without\r\n                the need for a Service Contract with an Application.  To directly invoke the\r\n                Service, send requests to the API Gateway endpoint below.\r\n              </p>\r\n              <div style=\"margin-bottom: 20px;\">\r\n                <textarea readonly=\"readonly\" class=\"apiman-endpoint\" style=\"width:100%\">{{ publicEndpoint.managedEndpoint }}</textarea>\r\n              </div>\r\n            </div>\r\n\r\n            <div id=\"available-plans-wrap\">\r\n              <h3 apiman-i18n-key=\"available-plans\" class=\"consumer-header\">Available Plans</h3>\r\n              <div class=\"apiman-plans consumer-section\" data-field=\"plans\">\r\n\r\n                <div class=\"apiman-no-content\" ng-hide=\"plans.length > 0\">\r\n                  <p class=\"apiman-no-entities-description\" apiman-i18n-key=\"no-plans-offered-by-service\">No plans are currently offered by this service.</p>\r\n                </div>\r\n\r\n                <div class=\"container-fluid apiman-summaryrow\" ng-repeat=\"plan in plans\">\r\n                  <div class=\"row\">\r\n                    <div class=\"col-md-10 col-no-padding\">\r\n                      <i class=\"fa fa-fw fa-bar-chart-o icon\"></i>\r\n                      <span class=\"title\"><a data-toggle=\"collapse\" ng-click=\"getPolicyChain(plan)\" href=\"#collapse{{ $index }}\">{{ plan.planName }}</a></span>\r\n                      <div class=\"description\">\r\n                        {{ plan.planDescription }}\r\n                      </div>\r\n                    </div>\r\n                    <div class=\"col-md-2 col-no-padding\">\r\n                      <span class=\"actions\"><a apiman-i18n-key=\"create-contract\" href=\"{{ pluginName }}/new-contract?svc={{ params.service }}&amp;svcorg={{ params.org }}&amp;svcv={{ params.version }}&amp;planid={{ plan.planId }}\" class=\"btn btn-default\">Create Contract</a></span>\r\n                    </div>\r\n                  </div>\r\n                  <!-- Sub-section - policy chain -->\r\n                  <div class=\"panel-collapse collapse apiman-policy-chain\" id=\"collapse{{ $index }}\" style=\"margin-top: 15px\" >\r\n                  \r\n                    <div ng-hide=\"chains[plan.planId]\">\r\n                      <div class=\"spinner spinner-sm pull-left\"></div>\r\n                      <span apiman-i18n-key=\"loading-policy-chain\" style=\"margin-left: 5px\">Loading policy chain...</span>\r\n                    </div>\r\n                  \r\n                    <div class=\"apiman-policies\" ng-show=\"chains[plan.planId]\">\r\n                      <div class=\"container-fluid apiman-summaryrow\" ng-repeat=\"policy in chains[plan.planId]\">\r\n                        <div class=\"row\">\r\n                          <div class=\"col-md-1 col-no-padding\">\r\n                            <i class=\"fa fa-{{ policy.icon }} fa-fw apiman-policy-icon\"></i>\r\n                          </div>\r\n                          <div class=\"col-md-11 col-no-padding\">\r\n                            <div class=\"\">\r\n                              <span class=\"title apiman-label-faded\">{{ policy.name }}</span>\r\n                            </div>\r\n                            <div class=\"description apiman-label-faded\">{{ policy.description }}</div>\r\n                          </div>\r\n                        </div>\r\n                        <div>\r\n                          <hr>\r\n                        </div>\r\n                      </div>\r\n                    </div> <!-- /policy chain -->\r\n                    \r\n                  </div>\r\n                  <hr />\r\n                </div>\r\n              \r\n              </div>\r\n            </div>\r\n          </div>\r\n        </div> <!-- /right-column -->\r\n        \r\n      </div>\r\n    </div> <!-- /container -->\r\n  </div>\r\n  </body>\r\n</html>\r\n");
-$templateCache.put("plugins/api-manager/html/consumer/consumer-services.html","<!DOCTYPE html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"utf-8\">\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></meta>\r\n  </head>\r\n\r\n  <body>\r\n  <div>\r\n    <div ng-include=\"\'plugins/api-manager/html/progress.include\'\"></div>\r\n    <div id=\"apiman-header\" ng-include=\"\'plugins/api-manager/html/navbar.include\'\"></div>   \r\n    <div ng-controller=\"Apiman.ConsumerSvcsController\" class=\"page container\" data-field=\"page\" ng-cloak=\"\" ng-show=\"pageState == \'loaded\'\">\r\n      <div class=\"row\">\r\n        <div class=\"col-md-12\">\r\n          <ol class=\"breadcrumb\" data-field=\"breadcrumb\">\r\n            <li><a href=\"{{ pluginName }}/dash\"><i class=\"fa fa-home fa-fw\"></i><span apiman-i18n-key=\"home\">Home</span></a></li>\r\n            <li class=\"active\"><i class=\"fa fa-search fa-fw\"></i><span apiman-i18n-key=\"services\">Services</span></li>\r\n          </ol>\r\n        </div>\r\n      </div>\r\n      <div class=\"row\">\r\n        <div class=\"col-md-12\">\r\n          <h1 class=\"consumer-top-header\" apiman-i18n-key=\"find-service\">Find a Service</h1>\r\n        </div>\r\n        <div class=\"col-md-6 no-phone\">\r\n          <p class=\"description\" apiman-i18n-key=\"find-service-description\">Use this page to find Services you wish to consume.  Use the various search options to find Services, then review them and eventually create Contracts to them.</p>\r\n        </div>\r\n        <div class=\"col-md-6\">\r\n          <form ng-submit=\"searchSvcs(serviceName)\">\r\n            <input id=\"apiman-search\" ng-model=\"serviceName\" type=\"text\" class=\"form-control input-search\" apiman-i18n-key=\"searchfor-svcs\" placeholder=\"Search by service name or keyword...\"></input>\r\n            <button type=\"submit\" class=\"btn btn-default btn-search\" apiman-i18n-key=\"search\" data-field=\"searchButton\" ng-click=\"searchSvcs()\">Search</input>\r\n          </button>\r\n        </div>\r\n        <div class=\"col-md-12\">\r\n          <hr />\r\n        </div>\r\n      </div>\r\n      \r\n      <!-- Search results -->\r\n      <div class=\"row browse-items\">\r\n        <div class=\"col-md-12\" data-field=\"services\">\r\n\r\n          <div class=\"apiman-no-content container-fluid\" ng-hide=\"services.length > 0\">\r\n            <div class=\"row\">\r\n              <div class=\"col-md-9\">\r\n                <p apiman-i18n-key=\"consumer-no-services-found\" class=\"apiman-no-entities-description\">No services found. Either no services matched the query or you haven\'t queried yet!</p>\r\n              </div>\r\n              <div class=\"col-md-3\"></div>\r\n            </div>\r\n          </div>\r\n\r\n          <div ng-show=\"services.length > 0\">\r\n            <div class=\"count\">\r\n              Found {{ services.length}} matching services.\r\n            </div>\r\n\r\n            <div class=\"item\" ng-repeat=\"service in services\">\r\n              <div class=\"title\">\r\n                <i class=\"fa fa-puzzle-piece icon\"></i><a href=\"{{ pluginName }}/browse/orgs/{{service.organizationId}}\">{{ service.organizationName }}</a>\r\n                <span apiman-i18n-skip> / </span>\r\n                <b><a href=\"{{ pluginName }}/browse/orgs/{{service.organizationId}}/{{service.id}}\">{{ service.name }}</a></b>\r\n              </div>\r\n              <div class=\"description\" title=\"{{ service.description }}\">{{ service.description }}</div>\r\n            </div>\r\n          </div>\r\n\r\n        </div>\r\n      </div>\r\n\r\n    </div> <!-- /container -->\r\n  </div>\r\n  </body>\r\n</html>\r\n");
 $templateCache.put("plugins/api-manager/html/app/apiModal.html","<div class=\"modal fade\" id=\"apiModal\" tabindex=\"-1\" role=\"dialog\" aria-hidden=\"true\">\r\n  <div class=\"modal-dialog\">\r\n    <div class=\"modal-content\">\r\n      <div class=\"modal-header\">\r\n        <button data-dismiss=\"modal\" aria-hidden=\"true\" class=\"close\" type=\"button\">\r\n          <span class=\"pficon pficon-close\"></span>\r\n        </button>\r\n        <h4 class=\"modal-title\" id=\"apiCopyModalLabel\">\r\n          <span apiman-i18n-key=\"modal-title\">Copy API Endpoint</span>\r\n        </h4>\r\n      </div>\r\n      <div class=\"modal-body\">\r\n        <p class=\"explanation\" apiman-i18n-key=\"api-dialog-explanation\">To successfully invoke the managed service for this service contract, you must provide the appropriate API Key with each request. The API Key can be provided either by sending it as an HTTP Request Header named X-API-Key, or you can send it as a URL query parameter.</p>\r\n        <hr style=\"margin-left: -25px; margin-right: -25px\">\r\n        <div class=\"form-label\" apiman-i18n-key=\"as-query-param\">As Query Parameter</div>\r\n        <textarea readonly style=\"width: 100%\">{{ asQueryParam }}</textarea>\r\n        <p apiman-i18n-skip>&nbsp;</p>\r\n        <div class=\"form-label\" apiman-i18n-key=\"as-request-header\">As HTTP Request Header</div>\r\n        <textarea readonly style=\"width: 100%\">{{ asRequestHeader }}</textarea>\r\n      </div>\r\n      <div class=\"modal-footer\">\r\n        <button data-dismiss=\"modal\" apiman-i18n-key=\"done\" class=\"btn btn-default\" type=\"button\">Done</button>\r\n      </div>\r\n    </div>\r\n  </div>\r\n</div>\r\n");
 $templateCache.put("plugins/api-manager/html/app/app-activity.html","<!DOCTYPE html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"utf-8\">\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></meta>\r\n    \r\n  </head>\r\n\r\n  <body>\r\n  <div>\r\n    <div ng-include=\"\'plugins/api-manager/html/progress.include\'\"></div>\r\n    <div id=\"apiman-header\" ng-include=\"\'plugins/api-manager/html/navbar.include\'\"></div>\r\n    <div ng-controller=\"Apiman.AppActivityController\" class=\"container page\" data-field=\"page\" ng-cloak=\"\" ng-show=\"pageState == \'loaded\'\">\r\n      <div ng-include=\"\'plugins/api-manager/html/app/app_bc.include\'\"></div>\r\n      <!-- Entity Summary Row -->\r\n      <div ng-include=\"\'plugins/api-manager/html/app/app_entity.include\'\"></div>\r\n\r\n      <!-- Navigation + Content Row -->\r\n      <div class=\"row\">\r\n        <!-- Left hand nav -->\r\n        <div ng-include=\"\'plugins/api-manager/html/app/app_tabs.include\'\"></div>\r\n        <!-- /Left hand nav -->\r\n\r\n        <!-- Content -->\r\n        <div class=\"col-md-10 apiman-entity-content apiman-entity-overview\">\r\n          <!-- Title and help text -->\r\n          <div class=\"title\" apiman-i18n-key=\"app-activity\">Application Activity</div>\r\n          <div class=\"description\" apiman-i18n-key=\"app-activity-help\">The list below is all of the activity (configuration changes made by apiman users) associated with this Application.</div>\r\n          <hr />\r\n          <apiman-activity model=\"auditEntries\" next=\"getNextPage\"/>\r\n        </div>\r\n        <!-- /Content -->\r\n      </div>\r\n    </div> <!-- /container -->\r\n  </div>\r\n  </body>\r\n</html>\r\n");
 $templateCache.put("plugins/api-manager/html/app/app-apis.html","<!DOCTYPE html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"utf-8\">\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></meta>\r\n  </head>\r\n\r\n  <body>\r\n  <div>\r\n    <div ng-include=\"\'plugins/api-manager/html/progress.include\'\"></div>\r\n    <div id=\"apiman-header\" ng-include=\"\'plugins/api-manager/html/navbar.include\'\"></div>\r\n    <div ng-controller=\"Apiman.AppApisController\" class=\"container page\" data-field=\"page\" ng-cloak=\"\" ng-show=\"pageState == \'loaded\'\">\r\n      <div ng-include=\"\'plugins/api-manager/html/app/app_bc.include\'\"></div>\r\n      <!-- Entity Summary Row -->\r\n      <div ng-include=\"\'plugins/api-manager/html/app/app_entity.include\'\"></div>\r\n\r\n      <!-- Navigation + Content Row -->\r\n      <div class=\"row\">\r\n        <!-- Left hand nav -->\r\n        <div ng-include=\"\'plugins/api-manager/html/app/app_tabs.include\'\"></div>\r\n        <!-- /Left hand nav -->\r\n\r\n        <!-- Content -->\r\n        <div class=\"col-md-10 apiman-entity-content apiman-entity-overview\">\r\n          <div class=\"col-md-11\">\r\n            <!-- Title and help text -->\r\n            <div class=\"title\" apiman-i18n-key=\"application-apis\">Application APIs</div>\r\n            <div class=\"description\" apiman-i18n-key=\"apis-help\">Below is a list of all the APIs this application consumes.  This information is derived from the set of Service Contracts the Application has entered into.  Manage these Contracts by switching to the \"Contracts\" tab.</div>\r\n            <hr />\r\n            <!-- The list of apis (filterable) -->\r\n            <div>\r\n              <div class=\"clearfix\"></div>\r\n              <div class=\"actions\">\r\n                <a href=\"{{ downloadAsJson }}\" class=\"btn btn-default\" target=\"_self\" apiman-i18n-key=\"download-as-json\">Download as JSON</a>\r\n                <a href=\"{{ downloadAsXml }}\" class=\"btn btn-default\" target=\"_self\" apiman-i18n-key=\"download-as-xml\">Download as XML</a>\r\n              </div>\r\n              <div class=\"clearfix\"></div>\r\n              <!-- The list of apis -->\r\n              <div class=\"table-responsive\">\r\n                <table class=\"table table-striped table-bordered table-hover table-with-details\" data-field=\"apis\">\r\n                  <thead>\r\n                    <tr>\r\n                      <th nowrap=\"nowrap\" width=\"1%\"></th>\r\n                      <th apiman-i18n-key=\"service\" nowrap=\"nowrap\">Service</th>\r\n                      <th apiman-i18n-key=\"version\" width=\"1%\" nowrap=\"nowrap\">Version</th>\r\n                      <th apiman-i18n-key=\"plan\" nowrap=\"nowrap\">Plan</th>\r\n                    </tr>\r\n                  </thead>\r\n                  <tbody>\r\n                    <tr ng-repeat-start=\"api in apiRegistry.apis\">\r\n                      <td><a ng-click=\"toggle(api)\" href=\"javascript:return false;\"><i class=\"fa fa-fw {{ api.expanded ? \'fa-chevron-down\' : \'fa-chevron-right\' }}\"></i></a></td>\r\n                      <td>\r\n                        <span><a href=\"{{ pluginName }}/browse/orgs/{{ api.serviceOrgId }}\">{{ api.serviceOrgName }}</a>\r\n                        <span apiman-i18n-skip>/</span>\r\n                        <a href=\"{{ pluginName }}/browse/orgs/{{ api.serviceOrgId }}/{{ api.serviceName }}/{{ api.serviceVersion }}\"><span class=\"emphasis\">{{ api.serviceName }}</span></a></span>\r\n                      </td>\r\n                      <td><span>{{ api.serviceVersion }}</span></td>\r\n                      <td>{{ api.planName }}</td>\r\n                    </tr>\r\n                    <tr ng-repeat-end ng-show=\"api.expanded\">\r\n                      <td colspan=\"4\">\r\n                        <form role=\"form\">\r\n                          <div class=\"form-group\">\r\n                            <label apiman-i18n-key=\"api-key\">API Key</label>\r\n                            <input readonly type=\"text\" class=\"form-control readonly apiman-readonly\" value=\"{{ api.apiKey }}\">\r\n                          </div>\r\n                          <div class=\"form-group\">\r\n                            <div>\r\n                              <button title=\"Click for details on how to invoke this managed service.\" data-field=\"detailsButton\" class=\"btn btn-default\" apiman-i18n-key=\"how-to-invoke\" ng-click=\"howToInvoke(api)\">How to invoke...</button>\r\n                            </div>\r\n                          </div>\r\n                        </form>\r\n                      </td>\r\n                    </tr>\r\n                  </tbody>\r\n                </table>\r\n              </div>\r\n            </div>\r\n            <!-- /Contract List -->\r\n        </div>\r\n        <!-- /Content -->\r\n      </div>\r\n    </div> <!-- /container -->\r\n  </div>\r\n  </body>\r\n</html>\r\n");
@@ -4284,6 +4300,11 @@ $templateCache.put("plugins/api-manager/html/app/app-contracts.html","<!DOCTYPE 
 $templateCache.put("plugins/api-manager/html/app/app-overview.html","<!DOCTYPE html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"utf-8\">\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></meta>\r\n    \r\n  </head>\r\n\r\n  <body>\r\n  <div>\r\n    <div ng-include=\"\'plugins/api-manager/html/progress.include\'\"></div>\r\n    <div id=\"apiman-header\" ng-include=\"\'plugins/api-manager/html/navbar.include\'\"></div>\r\n    <div ng-controller=\"Apiman.AppOverviewController\" class=\"container page\" data-field=\"page\" ng-cloak=\"\" ng-show=\"pageState == \'loaded\'\">\r\n      <div ng-include=\"\'plugins/api-manager/html/app/app_bc.include\'\"></div>\r\n      <!-- Entity Summary Row -->\r\n      <div ng-include=\"\'plugins/api-manager/html/app/app_entity.include\'\"></div>\r\n\r\n      <!-- Navigation + Content Row -->\r\n      <div class=\"row\">\r\n        <!-- Left hand nav -->\r\n        <div ng-include=\"\'plugins/api-manager/html/app/app_tabs.include\'\"></div>\r\n        <!-- /Left hand nav -->\r\n\r\n        <!-- Content -->\r\n        <div class=\"col-md-10 apiman-entity-content apiman-entity-overview\">\r\n          <!-- Content Summary -->\r\n          <div class=\"col-md-12\">\r\n            <h1 apiman-i18n-key=\"app-details\">Application Details</h1>\r\n            <p apiman-i18n-key=\"app-overview.app-description\">\r\n              This is the application details page.  Use this page to modify the Application\'s meta-data,\r\n              policies, and contracts.  There is no need to follow the tabs in order, but note that\r\n              you will need to fill out a minimum amount of data before the Application can be registered\r\n              with the Gateway.  In particular, the Application must have at least one Service Contract\r\n              (see the \"Contracts\" tab).\r\n            </p>\r\n            \r\n            <h2 apiman-i18n-key=\"contracts\">Contracts</h2>\r\n            <p apiman-i18n-key=\"app-overview.contracts-description\">\r\n              The \'Contracts\' tab is where you can manage all of the Service Contracts for this \r\n              Application.  A Service Contract is simply a link between this Application and a provided\r\n              Service the the Application consumes.\r\n            </p>\r\n\r\n            <h2 apiman-i18n-key=\"policies\">Policies</h2>\r\n            <p apiman-i18n-key=\"app-overview.policies-description\">\r\n              The \'Policies\' tab allows you to manage the Application-level policies that should\r\n              be applied whenever a request is made to any Service consumed by this Application.\r\n            </p>\r\n\r\n            <h2 apiman-i18n-key=\"apis\" apiman-status=\"Registered\">APIs</h2>\r\n            <p apiman-i18n-key=\"app-overview.apis-description\" apiman-status=\"Registered\">\r\n              The \'APIs\' tab lists all of the Services consumed by this Application, including \r\n              showing the API Key and live endpoint for each.  Go here if you want to figure out\r\n              how to invoke a Service once you have a Contract for it.\r\n            </p>\r\n\r\n            <h2 apiman-i18n-key=\"activity\">Activity</h2>\r\n            <p apiman-i18n-key=\"app-overview.activity-description\">\r\n              The \'Activity\' tab shows a history of all the changes made to the Application.  Essentially\r\n              it is an audit log.\r\n            </p>\r\n          </div>\r\n        </div>\r\n        <!-- /Content -->\r\n      </div>\r\n    </div> <!-- /container -->\r\n  </div>\r\n  </body>\r\n</html>\r\n");
 $templateCache.put("plugins/api-manager/html/app/app-policies.html","<!DOCTYPE html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"utf-8\">\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></meta>\r\n  </head>\r\n\r\n  <body>\r\n  <div>\r\n    <div ng-include=\"\'plugins/api-manager/html/progress.include\'\"></div>\r\n    <div id=\"apiman-header\" ng-include=\"\'plugins/api-manager/html/navbar.include\'\"></div>\r\n    <div ng-controller=\"Apiman.AppPoliciesController\" class=\"container page\" data-field=\"page\" ng-cloak=\"\" ng-show=\"pageState == \'loaded\'\">\r\n      <div ng-include=\"\'plugins/api-manager/html/app/app_bc.include\'\"></div>\r\n      <!-- Entity Summary Row -->\r\n      <div ng-include=\"\'plugins/api-manager/html/app/app_entity.include\'\"></div>\r\n\r\n      <!-- Navigation + Content Row -->\r\n      <div class=\"row\">\r\n        <!-- Left hand nav -->\r\n        <div ng-include=\"\'plugins/api-manager/html/app/app_tabs.include\'\"></div>\r\n        <!-- /Left hand nav -->\r\n\r\n        <!-- Content -->\r\n        <div class=\"col-md-10 apiman-entity-content\">\r\n          <div class=\"col-md-9\">\r\n            <!-- Title and help text -->\r\n            <div class=\"title\" apiman-i18n-key=\"app-policies\">Application Policies</div>\r\n            <div class=\"description\" apiman-i18n-key=\"app-policies-help\">Here is a list of all Policies defined for this Application.  These Policies will be applied to all Service invocations made by the Application, in addition to whatever Policies are defined by the Service itself.</div>\r\n            <hr />\r\n            <!-- The list of policies -->\r\n            <div apiman-permission=\"appEdit\" apiman-status=\"Created,Ready\" class=\"apiman-filters apiman-policies-filters\">\r\n              <a apiman-i18n-key=\"add-policy\" href=\"{{ pluginName }}/orgs/{{ org.id }}/apps/{{ app.id }}/{{ version.version }}/new-policy\" class=\"btn btn-primary pull-right\">Add Policy</a>\r\n            </div>\r\n            <div class=\"clearfix\"></div>\r\n            <div class=\"apiman-policies\" data-field=\"policies\">\r\n\r\n              <div class=\"apiman-no-content container-fluid\" ng-hide=\"policies.length > 0\">\r\n                <div class=\"row\">\r\n                  <div class=\"col-md-9\">\r\n                    <p class=\"apiman-no-entities-description\" apiman-i18n-key=\"no-policies-for-app\">It looks like there aren\'t any policies defined! That may be exactly what you want (of course) but if not, you may try defining one using the Add Policy button above...</p>\r\n                  </div>\r\n                  <div apiman-permission=\"svcEdit\" apiman-status=\"Created,Ready\" class=\"col-md-3\">\r\n                    <div class=\"apiman-no-entities-arrow\"></div>\r\n                  </div>\r\n                </div>\r\n              </div>\r\n              <div class=\"clearfix\"></div>\r\n              <apiman-policy-list ng-model=\"policies\" remove-function=\"removePolicy\" type=\"applications\" org-id=\"{{ org.id }}\" page-id=\"{{ app.id }}\" version=\"{{ version.version }}\"></policy-list>\r\n            </div>\r\n          </div>\r\n        </div>\r\n        <!-- /Content -->\r\n      </div>\r\n    </div> <!-- /container -->\r\n  </div>\r\n  </body>\r\n</html>\r\n");
 $templateCache.put("plugins/api-manager/html/app/app.html","<!DOCTYPE html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"utf-8\">\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></meta>\r\n  </head>\r\n\r\n  <body>\r\n  <div>\r\n    <div ng-include=\"\'plugins/api-manager/html/progress.include\'\"></div>\r\n    <div id=\"apiman-header\" ng-include=\"\'plugins/api-manager/html/navbar.include\'\"></div>\r\n    <div ng-controller=\"Apiman.AppRedirectController\" class=\"container page\" data-field=\"page\" ng-cloak=\"\" ng-show=\"pageState == \'loaded\'\">\r\n    </div> <!-- /container -->\r\n  </div>\r\n  </body>\r\n</html>\r\n");
+$templateCache.put("plugins/api-manager/html/consumer/consumer-org.html","<!DOCTYPE html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"utf-8\">\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></meta>\r\n    \r\n  </head>\r\n\r\n  <body>\r\n  <div>\r\n    <div ng-include=\"\'plugins/api-manager/html/progress.include\'\"></div>\r\n    <div id=\"apiman-header\" ng-include=\"\'plugins/api-manager/html/navbar.include\'\"></div>   \r\n    <div ng-controller=\"Apiman.ConsumerOrgController\" class=\"page container\" data-field=\"page\" ng-cloak=\"\" ng-show=\"pageState == \'loaded\'\">\r\n      <div class=\"row\">\r\n        <div class=\"col-md-12\">\r\n          <ol class=\"breadcrumb\" data-field=\"breadcrumb\">\r\n            <li><a href=\"{{ pluginName }}/dash\"><i class=\"fa fa-home fa-fw\"></i><span apiman-i18n-key=\"home\">Home</span></a></li>\r\n            <li><a href=\"{{ pluginName }}/browse/orgs\"><i class=\"fa fa-search fa-fw\"></i><span apiman-i18n-key=\"organizations\">Organizations</span></a></li>\r\n            <li class=\"active\"><span><i class=\"fa fa-shield fa-fw\"></i><span>{{ org.name }}</span></span></li>\r\n          </ol>\r\n        </div>\r\n      </div>\r\n      <div class=\"row\">\r\n        <div class=\"col-md-12\">\r\n          <h1 class=\"consumer-top-header\" apiman-i18n-key=\"organization-details\">Organization Details</h1>\r\n        </div>\r\n        <div class=\"col-md-12\">\r\n          <div class=\"vspacer-10\" />\r\n        </div>\r\n      </div>\r\n      \r\n      <div class=\"row\">\r\n\r\n        <!-- Left column -->\r\n        <div class=\"col-md-4 browse-items\">\r\n          <div class=\"item\" style=\"width: 100%; margin-bottom: 20px;\" data-field=\"organizationCard\">\r\n            <div class=\"title\"><i class=\"fa fa-shield icon\"></i><span data-field=\"title\">{{ org.name }}</span></div>\r\n            <div class=\"description\" data-field=\"description\">{{ org.description }}</div>\r\n            <div class=\"actions\" style=\"display:none\">\r\n              <button class=\"btn btn-default\" style=\"display:none\" data-field=\"requestMembership\" apiman-i18n-key=\"request-membership\">Request Membership</button>\r\n            </div>\r\n            <a ng-show=\"org.isMember\" class=\"ismember\" title=\"You are already a member of this Organization.\" href=\"{{ pluginName }}/orgs/{{ org.id }}\" data-field=\"isMemberLink\" apiman-i18n-key=\"is-member\"></a>\r\n          </div>\r\n          \r\n          <div class=\"consumer-section\">\r\n            <h3 apiman-i18n-key=\"current-members\" class=\"consumer-header\">Current Members</h3>\r\n            <div class=\"apiman-members\" data-field=\"members\">\r\n              <div class=\"container-fluid apiman-summaryrow\" ng-repeat=\"member in members\">\r\n                <div class=\"row\">\r\n                  <span class=\"title\">\r\n                    <i class=\"fa fa-fw fa-user icon\"></i>\r\n                    <a href=\"{{ pluginName }}/users/{{ member.userId }}/orgs\">{{ member.userName }}</a>\r\n                    <span class=\"secondary\">({{ member.userId }})</span>\r\n                  </span>\r\n                </div>\r\n              </div>\r\n            </div>\r\n          </div>\r\n        </div>\r\n        <!-- Right column -->\r\n        <div class=\"col-md-8\">\r\n          <div class=\"consumer-section\">\r\n            <h3 apiman-i18n-key=\"services-offered\" class=\"consumer-header\">Services Offered</h3>\r\n            <div class=\"apiman-filters apiman-services-filters\">\r\n              <apiman-search-box apiman-i18n-key=\"filter-consumer-services\" function=\"filterServices\" placeholder=\"Filter by service name...\" />\r\n            </div>\r\n            <div class=\"apiman-services consumer-section\" data-field=\"services\">\r\n\r\n              <div class=\"apiman-no-content\" ng-hide=\"services.length > 0\">\r\n                <p class=\"apiman-no-entities-description\" apiman-i18n-key=\"consumer-no-services-found-for-org\">No services are currently offered by this organization.</p>\r\n              </div>\r\n\r\n              <div class=\"apiman-no-content\" ng-show=\"services.length > 0 && filteredServices.length == 0\">\r\n                <p class=\"apiman-no-entities-description\" apiman-i18n-key=\"consumer-no-services-found-for-filter\">No services matched the current filter criteria.</p>\r\n              </div>\r\n\r\n              <div class=\"container-fluid apiman-summaryrow\" ng-repeat=\"service in filteredServices\">\r\n                <div class=\"row\">\r\n                  <i class=\"fa fa-fw fa-puzzle-piece icon\"></i>\r\n                  <span class=\"title\"><a href=\"{{ pluginName }}/browse/orgs/{{ org.id }}/{{ service.id }}\">{{ service.name }}</a></span>\r\n                </div>\r\n                <div class=\"row\">\r\n                  <span class=\"description\">\r\n                    {{ service.description }}\r\n                  </span>\r\n                </div>\r\n                <hr/>\r\n              </div>\r\n            </div>\r\n          </div>\r\n        </div>\r\n\r\n      </div>\r\n    </div> <!-- /container -->\r\n  </div>\r\n  </body>\r\n</html>\r\n");
+$templateCache.put("plugins/api-manager/html/consumer/consumer-orgs.html","<!DOCTYPE html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"utf-8\">\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></meta>\r\n  </head>\r\n\r\n  <body>\r\n  <div>\r\n    <div ng-include=\"\'plugins/api-manager/html/progress.include\'\"></div>\r\n    <div id=\"apiman-header\" ng-include=\"\'plugins/api-manager/html/navbar.include\'\"></div>   \r\n    <div ng-controller=\"Apiman.ConsumerOrgsController\" class=\"page container\" data-field=\"page\" ng-cloak=\"\" ng-show=\"pageState == \'loaded\'\">\r\n      <div class=\"row\">\r\n        <div class=\"col-md-12\">\r\n          <ol class=\"breadcrumb\" data-field=\"breadcrumb\">\r\n            <li><a href=\"{{ pluginName }}/dash\"><i class=\"fa fa-home fa-fw\"></i><span apiman-i18n-key=\"home\">Home</span></a></li>\r\n            <li class=\"active\"><i class=\"fa fa-search fa-fw\"></i><span apiman-i18n-key=\"organizations\">Organizations</span></li>\r\n          </ol>\r\n        </div>\r\n      </div>\r\n      <div class=\"row\">\r\n        <div class=\"col-md-12\">\r\n          <h1 class=\"consumer-top-header\" apiman-i18n-key=\"find-org\">Find an Organization</h1>\r\n        </div>\r\n        <div class=\"col-md-6 no-phone\">\r\n          <p class=\"description\" apiman-i18n-key=\"find-org-description\">Use this page to find Organizations you may wish to join. Use this page to find Organizations you may wish to join. Use this page to find Organizations you may wish to join.</p>\r\n        </div>\r\n        <div class=\"col-md-6\">\r\n          <form ng-submit=\"searchOrg(orgName)\">\r\n            <input id=\"apiman-search\" ng-model=\"orgName\" type=\"text\" class=\"form-control input-search\" apiman-i18n-key=\"searchfor-orgs\" placeholder=\"Enter a word or phrase to search by...\"></input>\r\n            <button type=\"submit\" class=\"btn btn-default btn-search\" apiman-i18n-key=\"search\" data-field=\"searchButton\"\">Search</input>\r\n          </form>\r\n        </div>\r\n        <div class=\"col-md-12\">\r\n          <hr />\r\n        </div>\r\n      </div>\r\n      \r\n      <!-- Search results -->\r\n      <div class=\"row browse-items\">\r\n        <div class=\"col-md-12\" data-field=\"orgs\">\r\n\r\n          <div class=\"apiman-no-content container-fluid\" ng-hide=\"orgs.length > 0\">\r\n            <div class=\"row\">\r\n              <div class=\"col-md-9\">\r\n                <p apiman-i18n-key=\"consumer-no-orgs-found\" class=\"apiman-no-entities-description\">No organizations found. Either no organizations matched the query or you haven\'t queried yet!</p>\r\n              </div>\r\n              <div class=\"col-md-3\"></div>\r\n            </div>\r\n          </div>\r\n\r\n          <div ng-show=\"orgs.length > 0\">\r\n	        <div class=\"count\">\r\n	          Found {{ orgs.length }} matching organizations.\r\n	        </div>\r\n	        <div class=\"item\" ng-repeat=\"org in orgs\">\r\n	          <div class=\"title\"><i class=\"fa fa-shield icon\"></i><a href=\"{{ pluginName }}/browse/orgs/{{ org.id }}\">{{ org.name }}</a></div>\r\n	          <div class=\"description\" title=\"{{ org.description }}\">{{ org.description }}</div>\r\n<!-- 	          <div class=\"actions\"> -->\r\n<!-- 	            <button class=\"btn btn-default\">Request Membership</button> -->\r\n<!-- 	          </div> -->\r\n	          <a apiman-i18n-key=\"is-member-badge\" ng-show=\"org.isMember\" href=\"{{ pluginName }}/orgs/{{ org.id }}\" class=\"ismember\" title=\"You are already a member of this Organization.\"></a>\r\n	        </div>\r\n          </div>\r\n        </div>\r\n      </div>\r\n      \r\n    </div> <!-- /container -->\r\n  </div>\r\n  </body>\r\n</html>\r\n");
+$templateCache.put("plugins/api-manager/html/consumer/consumer-service-redirect.html","<!DOCTYPE html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"utf-8\">\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></meta>\r\n  </head>\r\n\r\n  <body>\r\n  <div>\r\n    <div ng-include=\"\'plugins/api-manager/html/progress.include\'\"></div>\r\n    <div id=\"apiman-header\" ng-include=\"\'plugins/api-manager/html/navbar.include\'\"></div>   \r\n    <div ng-controller=\"Apiman.ConsumerServiceRedirectController\" class=\"page container\" data-field=\"page\" ng-cloak=\"\" ng-show=\"pageState == \'loaded\'\">\r\n    </div> <!-- /container -->\r\n  </div>\r\n  </body>\r\n</html>\r\n");
+$templateCache.put("plugins/api-manager/html/consumer/consumer-service.html","<!DOCTYPE html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"utf-8\">\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></meta>\r\n    \r\n  </head>\r\n\r\n  <body>\r\n  <div>\r\n    <div ng-include=\"\'plugins/api-manager/html/progress.include\'\"></div>\r\n    <div id=\"apiman-header\" ng-include=\"\'plugins/api-manager/html/navbar.include\'\"></div>   \r\n    <div ng-controller=\"Apiman.ConsumerSvcController\" class=\"page container\" data-field=\"page\" ng-cloak=\"\" ng-show=\"pageState == \'loaded\'\">\r\n      <div class=\"row\">\r\n        <div class=\"col-md-12\">\r\n          <ol class=\"breadcrumb\" data-field=\"breadcrumb\">\r\n            <li><a href=\"{{ pluginName }}/dash\"><i class=\"fa fa-home fa-fw\"></i><span apiman-i18n-key=\"home\">Home</span></a></li>\r\n            <li><a href=\"{{ pluginName }}/browse/services\"><i class=\"fa fa-search fa-fw\"></i><span apiman-i18n-key=\"services\">Services</span></a></li>\r\n            <li class=\"active\"><i class=\"fa fa-puzzle-piece fa-fw\"></i><span>{{ service.name }}</span></li>\r\n          </ol>\r\n        </div>\r\n      </div>\r\n      <div class=\"row\">\r\n        <div class=\"col-md-12\">\r\n          <h1 class=\"consumer-top-header\" apiman-i18n-key=\"service-details\">Service Details</h1>\r\n        </div>\r\n        <div class=\"col-md-12\">\r\n          <div class=\"vspacer-10\" />\r\n        </div>\r\n      </div>\r\n      <div class=\"row\">\r\n\r\n        <!-- Left column -->\r\n        <div class=\"col-md-4 browse-items\">\r\n          <div class=\"item\" style=\"width: 100%; margin-bottom: 20px;\" data-field=\"serviceCard\">\r\n            <div class=\"title\">\r\n              <i class=\"fa fa-puzzle-piece icon\"></i><a href=\"{{ pluginName }}/browse/orgs/{{ service.organization.id }}\" data-field=\"titleOrg\">{{ service.organization.name }}</a>\r\n              <span apiman-i18n-skip> / </span>\r\n              <span class=\"emphasis\" data-field=\"titleService\">{{ service.name }}</span>\r\n            </div>\r\n            <div class=\"description\" data-field=\"description\" style=\"margin-bottom: 10px;\">{{ service.description }}</div>\r\n            <span class=\"form-label\" apiman-i18n-key=\"choose-version\">Choose Version:</span>\r\n            <div class=\"btn-group apiman-entity-action\" ng-show=\"versions.length > 0\">\r\n              <select apiman-select-picker=\"\" ng-model=\"selectedServiceVersion\" ng-change=\"setVersion( selectedServiceVersion )\" \r\n                title=\"\" class=\"selectpicker\" data-live-search=\"false\" apiman-i18n-skip\r\n                data-field=\"versionSelector\" data-ng-options=\"version as version.version for version in versions\">\r\n              </select>\r\n            </div>\r\n            <div apiman-i18n-key=\"no-published-service-versions-found\" class=\"apiman-label-faded\" ng-hide=\"versions.length > 0\">\r\n              No versions of this service have been published.  You will not be able to\r\n              consume this service until it has been published by its owner!\r\n            </div>\r\n          </div>\r\n        </div>\r\n        \r\n        <!-- Right column -->\r\n        <div class=\"col-md-8\">\r\n          <div class=\"consumer-section\">\r\n            <div id=\"managed-endpoint-wrap\" ng-show=\"version.publicService\">\r\n              <h3 apiman-i18n-key=\"public-endpoint\" class=\"consumer-header\">Public Endpoint</h3>\r\n              <p class=\"apiman-label-faded\" apiman-i18n-key=\"consumer-service.public-service-warning\">\r\n                Because this is a Public Service, it is possible to invoke it directly, without\r\n                the need for a Service Contract with an Application.  To directly invoke the\r\n                Service, send requests to the API Gateway endpoint below.\r\n              </p>\r\n              <div style=\"margin-bottom: 20px;\">\r\n                <textarea readonly=\"readonly\" class=\"apiman-endpoint\" style=\"width:100%\">{{ publicEndpoint.managedEndpoint }}</textarea>\r\n              </div>\r\n            </div>\r\n\r\n            <div id=\"available-plans-wrap\">\r\n              <h3 apiman-i18n-key=\"available-plans\" class=\"consumer-header\">Available Plans</h3>\r\n              <div class=\"apiman-plans consumer-section\" data-field=\"plans\">\r\n\r\n                <div class=\"apiman-no-content\" ng-hide=\"plans.length > 0\">\r\n                  <p class=\"apiman-no-entities-description\" apiman-i18n-key=\"no-plans-offered-by-service\">No plans are currently offered by this service.</p>\r\n                </div>\r\n\r\n                <div class=\"container-fluid apiman-summaryrow\" ng-repeat=\"plan in plans\">\r\n                  <div class=\"row\">\r\n                    <div class=\"col-md-10 col-no-padding\">\r\n                      <i class=\"fa fa-fw fa-bar-chart-o icon\"></i>\r\n                      <span class=\"title\"><a data-toggle=\"collapse\" ng-click=\"getPolicyChain(plan)\" href=\"#collapse{{ $index }}\">{{ plan.planName }}</a></span>\r\n                      <div class=\"description\">\r\n                        {{ plan.planDescription }}\r\n                      </div>\r\n                    </div>\r\n                    <div class=\"col-md-2 col-no-padding\">\r\n                      <span class=\"actions\"><a apiman-i18n-key=\"create-contract\" href=\"{{ pluginName }}/new-contract?svc={{ params.service }}&amp;svcorg={{ params.org }}&amp;svcv={{ params.version }}&amp;planid={{ plan.planId }}\" class=\"btn btn-default\">Create Contract</a></span>\r\n                    </div>\r\n                  </div>\r\n                  <!-- Sub-section - policy chain -->\r\n                  <div class=\"panel-collapse collapse apiman-policy-chain\" id=\"collapse{{ $index }}\" style=\"margin-top: 15px\" >\r\n                  \r\n                    <div ng-hide=\"chains[plan.planId]\">\r\n                      <div class=\"spinner spinner-sm pull-left\"></div>\r\n                      <span apiman-i18n-key=\"loading-policy-chain\" style=\"margin-left: 5px\">Loading policy chain...</span>\r\n                    </div>\r\n                  \r\n                    <div class=\"apiman-policies\" ng-show=\"chains[plan.planId]\">\r\n                      <div class=\"container-fluid apiman-summaryrow\" ng-repeat=\"policy in chains[plan.planId]\">\r\n                        <div class=\"row\">\r\n                          <div class=\"col-md-1 col-no-padding\">\r\n                            <i class=\"fa fa-{{ policy.icon }} fa-fw apiman-policy-icon\"></i>\r\n                          </div>\r\n                          <div class=\"col-md-11 col-no-padding\">\r\n                            <div class=\"\">\r\n                              <span class=\"title apiman-label-faded\">{{ policy.name }}</span>\r\n                            </div>\r\n                            <div class=\"description apiman-label-faded\">{{ policy.description }}</div>\r\n                          </div>\r\n                        </div>\r\n                        <div>\r\n                          <hr>\r\n                        </div>\r\n                      </div>\r\n                    </div> <!-- /policy chain -->\r\n                    \r\n                  </div>\r\n                  <hr />\r\n                </div>\r\n              \r\n              </div>\r\n            </div>\r\n          </div>\r\n        </div> <!-- /right-column -->\r\n        \r\n      </div>\r\n    </div> <!-- /container -->\r\n  </div>\r\n  </body>\r\n</html>\r\n");
+$templateCache.put("plugins/api-manager/html/consumer/consumer-services.html","<!DOCTYPE html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"utf-8\">\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></meta>\r\n  </head>\r\n\r\n  <body>\r\n  <div>\r\n    <div ng-include=\"\'plugins/api-manager/html/progress.include\'\"></div>\r\n    <div id=\"apiman-header\" ng-include=\"\'plugins/api-manager/html/navbar.include\'\"></div>   \r\n    <div ng-controller=\"Apiman.ConsumerSvcsController\" class=\"page container\" data-field=\"page\" ng-cloak=\"\" ng-show=\"pageState == \'loaded\'\">\r\n      <div class=\"row\">\r\n        <div class=\"col-md-12\">\r\n          <ol class=\"breadcrumb\" data-field=\"breadcrumb\">\r\n            <li><a href=\"{{ pluginName }}/dash\"><i class=\"fa fa-home fa-fw\"></i><span apiman-i18n-key=\"home\">Home</span></a></li>\r\n            <li class=\"active\"><i class=\"fa fa-search fa-fw\"></i><span apiman-i18n-key=\"services\">Services</span></li>\r\n          </ol>\r\n        </div>\r\n      </div>\r\n      <div class=\"row\">\r\n        <div class=\"col-md-12\">\r\n          <h1 class=\"consumer-top-header\" apiman-i18n-key=\"find-service\">Find a Service</h1>\r\n        </div>\r\n        <div class=\"col-md-6 no-phone\">\r\n          <p class=\"description\" apiman-i18n-key=\"find-service-description\">Use this page to find Services you wish to consume.  Use the various search options to find Services, then review them and eventually create Contracts to them.</p>\r\n        </div>\r\n        <div class=\"col-md-6\">\r\n          <form ng-submit=\"searchSvcs(serviceName)\">\r\n            <input id=\"apiman-search\" ng-model=\"serviceName\" type=\"text\" class=\"form-control input-search\" apiman-i18n-key=\"searchfor-svcs\" placeholder=\"Search by service name or keyword...\"></input>\r\n            <button type=\"submit\" class=\"btn btn-default btn-search\" apiman-i18n-key=\"search\" data-field=\"searchButton\" ng-click=\"searchSvcs()\">Search</input>\r\n          </button>\r\n        </div>\r\n        <div class=\"col-md-12\">\r\n          <hr />\r\n        </div>\r\n      </div>\r\n      \r\n      <!-- Search results -->\r\n      <div class=\"row browse-items\">\r\n        <div class=\"col-md-12\" data-field=\"services\">\r\n\r\n          <div class=\"apiman-no-content container-fluid\" ng-hide=\"services.length > 0\">\r\n            <div class=\"row\">\r\n              <div class=\"col-md-9\">\r\n                <p apiman-i18n-key=\"consumer-no-services-found\" class=\"apiman-no-entities-description\">No services found. Either no services matched the query or you haven\'t queried yet!</p>\r\n              </div>\r\n              <div class=\"col-md-3\"></div>\r\n            </div>\r\n          </div>\r\n\r\n          <div ng-show=\"services.length > 0\">\r\n            <div class=\"count\">\r\n              Found {{ services.length}} matching services.\r\n            </div>\r\n\r\n            <div class=\"item\" ng-repeat=\"service in services\">\r\n              <div class=\"title\">\r\n                <i class=\"fa fa-puzzle-piece icon\"></i><a href=\"{{ pluginName }}/browse/orgs/{{service.organizationId}}\">{{ service.organizationName }}</a>\r\n                <span apiman-i18n-skip> / </span>\r\n                <b><a href=\"{{ pluginName }}/browse/orgs/{{service.organizationId}}/{{service.id}}\">{{ service.name }}</a></b>\r\n              </div>\r\n              <div class=\"description\" title=\"{{ service.description }}\">{{ service.description }}</div>\r\n            </div>\r\n          </div>\r\n\r\n        </div>\r\n      </div>\r\n\r\n    </div> <!-- /container -->\r\n  </div>\r\n  </body>\r\n</html>\r\n");
 $templateCache.put("plugins/api-manager/html/directives/activity.html","<div class=\"apiman-activity\">\r\n\r\n  <div class=\"apiman-no-content container-fluid\" ng-hide=\"auditEntries.length > 0\">\r\n    <div class=\"row\">\r\n      <div class=\"col-md-12\">\r\n        <p class=\"apiman-no-entities-description\" apiman-i18n-key=\"no-activity-found-for-user\">No activity was found.  I guess someone should do something first!</p>\r\n      </div>\r\n    </div>\r\n  </div>\r\n\r\n  <div class=\"container-fluid apiman-summaryrow\" ng-repeat=\"entry in auditEntries\">\r\n    <div>\r\n      <apiman-audit-entry model=\"entry\" entity-type=\"{{ entry.what }}\" data-entry-type=\"{{ entry.entityType }}\" />\r\n    </div>\r\n    <div class=\"row\">\r\n      <i class=\"fa fa-fw {{ getEntryIcon(entry) }}\"></i>\r\n      <div class=\"apiman-timestamp\">{{ entry.createdOn | date : \"yyyy-MM-dd \'@\' h:mm:ss a\" }}</div>\r\n    </div>\r\n    <hr/>\r\n  </div>\r\n  <div class=\"container-fluid\" style=\"text-align: center\" ng-hide=\"auditEntries.length == 0\">\r\n    <button ng-show=\"hasMore && auditEntries.length >= 20\" apiman-action-btn=\"\" data-field=\"getMoreButton\" apiman-i18n-key=\"activity.show-more\" placeholder=\"Loading More...\" data-icon=\"fa-cog\" ng-click=\"getMore()\" class=\"btn btn-default\">Show Next 20 Items</button>\r\n  </div>\r\n</div>");
 $templateCache.put("plugins/api-manager/html/directives/confirmModal.html","      <div class=\"modal fade\" id=\"confirmModal\" tabindex=\"-1\" role=\"dialog\" aria-hidden=\"true\">\r\n        <div class=\"modal-dialog\">\r\n          <div class=\"modal-content\">\r\n            <div class=\"modal-header\">\r\n              <button type=\"button\" class=\"close\" data-dismiss=\"modal\" aria-hidden=\"true\">\r\n                <span class=\"pficon pficon-close\"></span>\r\n              </button>\r\n              <h4 class=\"modal-title\"><span>{{ title }}</span></h4>\r\n            </div>\r\n            <div class=\"modal-body\" ng-transclude=\"\"></div>\r\n            <div class=\"modal-footer\">\r\n              <button ng-click=\"onNo()\" data-dismiss=\"modal\" type=\"button\" class=\"btn btn-default\" apiman-i18n-key=\"no\">No</button>\r\n              <button ng-click=\"onYes()\" data-dismiss=\"modal\" type=\"button\" class=\"btn btn-primary\"  apiman-i18n-key=\"yes\">Yes</button>\r\n            </div>\r\n          </div>\r\n        </div>\r\n      </div>\r\n");
 $templateCache.put("plugins/api-manager/html/directives/editDescription.html","<div style=\"margin-top: 15px; position: relative;\">\r\n    <div class=\"description\" editable-textarea=\"descr\" e-ng-focus=\"focusOnDescription($event)\" e-ng-change=\"changeOnDescription()\"\r\n        e-class=\"autoExpand\" ng-mouseover=\"descriptionMouseOver($event)\" ng-mouseout=\"descriptionMouseOut($event)\"\r\n        id=\"descriptionWrapper\">\r\n            {{ descr || \"&lt;\" + defaultValue + \"&gt;\" }}\r\n            <a href=\"#\" class=\"apiman-inline-edit-overlay-edit\" ng-show=\"showPencil\" style=\"position:absolute\"\r\n                ng-style=\"{ left: leftPosition, top: topPosition, height: height }\">\r\n                <i class=\"fa fa-pencil fa-fw\"></i>\r\n            </a>\r\n    </div>\r\n</div>\r\n");
