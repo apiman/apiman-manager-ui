@@ -4,24 +4,29 @@ body {
   font-size: 13px;
 }
 
-.about table {
+.apiman-wrong-status, .apiman-not-permitted {
+  display: none !important;
+}
+
+.apiman-about-page table {
   box-shadow: 2px 2px 3px rgb(221, 221, 221);
 }
 
-.about-logo {
-  background-image: url(../img/about-logo.png);
+.apiman-about-page .about-logo {
+  background-image: url(../img/about-logo.gif);
   background-repeat: no-repeat;
   background-position: top left;
-  width: 200px;
-  height: 245px;
+  width: 215px;
+  height: 259px;
+  margin-top: 30px;
 }
 
-.about-label {
+.apiman-about-page .about-label {
   font-weight: bold;
   color: #555;
 }
 
-.form-control[readonly] {
+.apiman-form-control[readonly] {
   cursor: auto;
 }
 
@@ -34,54 +39,11 @@ body {
   line-height: 22px;
 }
 
-.grabber {
+.policy-grabber {
   background-image: url(../img/grabber.png);
   background-repeat: repeat-y;
   cursor: move;
   width: 10px;
-}
-
-.login-pf .container {
-  border-top: 1px solid rgb(178, 178, 178);
-  border-bottom: 1px solid rgb(178, 178, 178);
-  background-color: rgba(255, 255, 255, 0.55);
-}
-
-.login-pf body {
-  background: rgb(208, 208, 208);
-  color: #333;
-}
-
-.login-pf #brand .project-name {
-  font-size: 22px;
-  font-weight: bold;
-}
-
-.login-pf #brand .tagline {
-  font-size: 15px;
-  margin-left: 20px;
-  font-style: italic;
-}
-
-.login-pf .login-error {
-  font-size: 16px;
-  color: rgb(240, 80, 90);
-}
-
-.dropzone {
-  padding: 20px;
-  text-align: center;
-  border: 1px dashed rgb(119, 136, 153);
-  color: rgb(85, 85, 85);
-  font-weight: 700;
-}
-.dropzone.dropped {
-  border: 1px dashed rgb(4, 179, 0);
-  background-color: rgb(203, 255, 202);
-}
-.dropzone.dropping {
-  border: 1px dashed rgb(106, 131, 249);
-  background-color: rgb(217, 223, 253);
 }
 
 textarea.dropping {
@@ -89,12 +51,12 @@ textarea.dropping {
   background-color: rgb(217, 223, 253);
 }
 
-.search-box input {
+.apiman-search-box input {
   width: 100%;
   padding: 3px;
   border: 1px solid rgb(183, 183, 183);
 }
-.search-box button.btn {
+.apiman-search-box button.btn {
   margin-left: 0px;
   border-left: 0px;
   box-shadow: none;
@@ -125,19 +87,11 @@ textarea.dropping {
   padding: 0px;
 }
 
-.btn {
-  font-size: 12px;
-}
-
-.dropdown-menu, .form-control {
-  font-size: 13px;
-}
-
-.form-control {
+.apiman-form-control {
   height: 28px;
 }
 
-textarea.form-data {
+textarea.apiman-form-data {
   width: 780px;
   height: 400px;
   font-size: 11px;
@@ -155,16 +109,6 @@ textarea.form-data {
   margin-bottom: 0px;
 }
 
-.control-with-copy input {
-  display: inline;
-  width: 100%;
-}
-.control-with-copy button {
-  margin-left: 5px;
-  padding-top: 3px;
-  padding-bottom: 3px;
-}
-
 
 @keyframes progressPulse {
   from {
@@ -177,10 +121,10 @@ textarea.form-data {
     border-bottom-color: rgb(25, 157, 222);
   }
 }
-#progress-indicator {
+#apiman-progress-indicator {
   border-bottom: 2px solid rgb(25, 157, 222);
 }
-#progress-indicator.loading {
+#apiman-progress-indicator.loading {
   animation-duration: 1.5s;
   animation-name: progressPulse;
   animation-iteration-count: infinite;
@@ -226,6 +170,13 @@ textarea.form-data {
 }
 .alert-warning .pficon {
   color: rgb(236, 122, 8);
+}
+
+.alert-danger {
+  background-color: rgb(255,242,245);
+}
+.alert-danger .pficon {
+  color: #C00;
 }
 
 .apiman-label {
@@ -283,7 +234,7 @@ textarea.form-data {
   border-color: #870008;
 }
 
-.form-label {
+.apiman-form-label {
   margin-right: 10px;
   font-weight: 700;
   color: rgb(85, 85, 85);
@@ -293,7 +244,7 @@ textarea.form-data {
   width: 300px;
 }
 
-#form-page .inline-form-control {
+#form-page .inline-apiman-form-control {
   display: inline; 
   margin: 0px 5px;
   width: auto;
@@ -305,56 +256,6 @@ textarea.form-data {
   float: none;
   margin: 0px 3px 5px 3px;
   width: auto;
-}
-
-.dropdown-menu li a:hover {
-  color: rgb(255, 255, 255);
-  background-color: rgb(66, 139, 202);
-}
-
-.table th {
-  color: #666;
-}
-
-.navbar-default {
-  background-color: #0B61A4;
-  border-bottom: 1px solid #FF9200;
-}
-.navbar-default .navbar-brand, .navbar-default .navbar-brand:hover, .navbar-default .navbar-brand:focus {
-  color: white;
-}
-.navbar-default .navbar-nav li a {
-  color: white;
-}
-.navbar-default .navbar-nav li a:hover, .navbar-default .navbar-nav li a:focus {
-  color: #ddd;
-}
-a, .nav li a {
-  color: #3F92D2;
-  text-decoration: none;
-}
-a:hover, a:focus, .nav li a:hover, .nav li a:focus {
-  color: #3F92D2;
-}
-a:hover {
-  text-decoration: underline;
-}
-
-#page-loading {
-  width: 100%;
-  padding: 38px;
-  text-align: center;
-}
-
-#page-loading .center {
-  display: inline-block;
-  height: 33px;
-  font-size: 18px;
-  padding-left: 35px;
-  padding-top: 4px;
-  background-image: url(../img/page-spinner.gif);
-  background-position: left top;
-  background-repeat: no-repeat;
 }
 
 .input-search {
@@ -672,7 +573,7 @@ ol.breadcrumb {
   line-height: normal;
   padding-top: 5px;
 }
-.apiman-entity-summary .apiman-entity-breadcrumb .title .versions .bootstrap-select:not([class*="span"]):not([class*="col-"]):not([class*="form-control"]) {
+.apiman-entity-summary .apiman-entity-breadcrumb .title .versions .bootstrap-select:not([class*="span"]):not([class*="col-"]):not([class*="apiman-form-control"]) {
   float: left;
   width: 140px;
 }
@@ -913,7 +814,7 @@ ol.breadcrumb {
 .apiman-policies .row .col-70 {
   width: 70%;
 }
-.apiman-policies .row .grabber {
+.apiman-policies .row .policy-grabber {
   float: left;
   margin-right: 10px;
 }
@@ -1202,10 +1103,10 @@ ol.breadcrumb {
   text-decoration: none;
 }
 
-.form.policy-config input[type=text].form-control {
+.form.policy-config input[type=text].apiman-form-control {
   width: 425px;
 }
-.form.policy-config input[type=text].form-control-small {
+.form.policy-config input[type=text].apiman-form-control-small {
   width: 200px;
 }
 
@@ -1247,55 +1148,7 @@ div.admin-page .admin-content .apiman-summaryrow .emphasis {
   text-decoration: underline;
 }
 
-#apiman-log-viewer {
-  position: fixed;
-  left: 0px;
-  width: 50%;
-  top: 100px;
-  background-color: #fafafa;
-  border-top: 1px solid #887;
-  border-right: 1px solid #887;
-  border-bottom: 1px solid #887;
-  padding-top: 10px;
-  padding-bottom: 20px;
-  z-index: 1000;
-  box-shadow: 3px 3px 8px #AAA;
-  opacity: 0.75;
-}
-
-#apiman-log-viewer:hover {
-  opacity: 1;
-}
-
-#apiman-log-viewer .settings {
-  border-bottom: 1px solid #887;
-}
-
-#apiman-log-viewer .settings .close {
-  font-size: 26px;
-}
-
-#apiman-log-viewer .settings .settings-label {
-  display: inline-block;
-  position: relative;
-  margin-right: 10px;
-}
-
-#apiman-log-viewer .messages-wrap {
-  padding-left: 10px;
-  padding-right: 10px;
-}
-
-#apiman-log-viewer .messages {
-  border: 1px solid #887;
-  margin-top: 20px;
-  height: 275px;
-  overflow: auto;
-  background-color: white;
-  padding: 3px;
-}
-
-.settings-detail {
+.apiman-settings .settings-detail {
   padding: 20px;
   border: 1px solid rgb(200, 200, 200);
   background-color: rgb(249, 249, 249);
@@ -1519,7 +1372,7 @@ textarea.apiman-endpoint {
   padding-top: 10px;
 }
 
-.modal .form-label {
+.modal .apiman-form-label {
   font-size: 12px;
   margin-right: 10px;
   line-height: 24px;
@@ -1529,4 +1382,42 @@ textarea.apiman-endpoint {
 #selectServiceModal .version {
   display: block;
   width: auto;
+}
+
+#apiman-swagger.swagger-section .swagger-ui-wrap {
+  max-width: none;
+  margin-left: 0px;
+  margin-right: 0px;
+}
+#apiman-swagger.swagger-section .swagger-ui-wrap a {
+  cursor: pointer;
+}
+#apiman-swagger.swagger-section #resources_container {
+  padding: 0px;
+  margin: 0px;
+  width: auto;
+}
+#apiman-swagger.swagger-section #resources_container #resources {
+  padding: 0px;
+  margin: 0px;
+}
+#apiman-swagger.swagger-section #resources_container #resources .resource h2 {
+  margin: 0px;
+}
+#apiman-swagger.swagger-section #resources_container #resources ul.endpoints {
+  padding: 0px;
+  margin: 0px;
+}
+#apiman-swagger.swagger-section .swagger-ui-wrap table tbody tr td {
+  font-size: inherit;
+}
+#apiman-swagger.swagger-section .swagger-ui-wrap table thead tr th {
+  font-size: inherit;
+}
+#apiman-swagger.swagger-section .swagger-ui-wrap ul#resources li.resource ul.endpoints li.endpoint ul.operations li.operation div.content h4 {
+  padding: 0px;
+  margin: 0px;
+}
+#apiman-swagger.swagger-section .swagger-ui-wrap p {
+  padding: 0px;
 }
