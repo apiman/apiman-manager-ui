@@ -115,7 +115,9 @@ var Apiman;
         var requestInterceptor = {
             request: function (config) {
                 var authHeader = Configuration.getAuthorizationHeader();
-                config.headers.Authorization = authHeader;
+                if (authHeader) {
+                    config.headers.Authorization = authHeader;
+				}
                 return config;
             }
         };
@@ -3385,7 +3387,7 @@ var Apiman;
             if (!value) {
                 // Case 1: no filter value and no selected roles
                 // Case 2: no filter value but at least one selected role
-                // Case 3: 
+                // Case 3:
                 if ($scope.selectedRoles.length === 0) {
                     $scope.filteredMembers = $scope.members;
                 }
