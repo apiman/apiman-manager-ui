@@ -5,8 +5,26 @@ echo "  Releasing the API Manager bower component"
 echo "###########################################"
 echo ""
 
-read -p "apiman Version: " RELEASE_VERSION
-read -p "Bower Component Version: " BOWER_VERSION
+
+RELEASE_VERSION=$1
+BOWER_VERSION=$2
+
+if [ "x$RELEASE_VERSION" = "x" ]
+then
+  read -p "apiman Version: " RELEASE_VERSION
+fi
+
+if [ "x$BOWER_VERSION" = "x" ]
+then
+  read -p "Bower Component Version: " BOWER_VERSION
+fi
+
+echo "######################################"
+echo "apiman Version: $RELEASE_VERSION"
+echo "Bower Component Version: $BOWER_VERSION"
+echo "######################################"
+echo ""
+
 
 rm -rf target
 mkdir target
