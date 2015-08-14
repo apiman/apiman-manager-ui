@@ -4,6 +4,10 @@ body {
   font-size: 13px;
 }
 
+.bootstrap-select.btn-group .dropdown-menu .selected a span.apiman-label-faded {
+  color: white;
+}
+
 .apiman-wrong-status, .apiman-not-permitted {
   display: none !important;
 }
@@ -250,7 +254,7 @@ textarea.apiman-form-data {
   width: auto;
 }
 
-#form-page .inline-form-dropdown {
+#form-page .apiman-inline-form-dropdown, .apiman-inline-form-dropdown, .bootstrap-select .apiman-inline-form-dropdown {
   height: 28px;
   display: inline;
   float: none;
@@ -1065,6 +1069,9 @@ ol.breadcrumb {
 .error-500 {
   background-image: url(../img/error-500.png);
 }
+.error-0 {
+  background-image: url(../img/error-0.png);
+}
 
 .consumer-top-header {
   margin-top: 0px;
@@ -1420,4 +1427,13 @@ textarea.apiman-endpoint {
 }
 #apiman-swagger.swagger-section .swagger-ui-wrap p {
   padding: 0px;
+}
+
+.apiman-chart-title {
+  text-align: center;
+  text-decoration: underline;
+}
+
+#apiman-svc-metrics-selector .bootstrap-select {
+  width: auto;
 }
